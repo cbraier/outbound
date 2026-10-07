@@ -28,7 +28,44 @@ interface In {
   professional_profile?: string;
   provider?: string;
   api_key?: string;
+  image_base64?: string;
+  action?: string;
 }
+
+function mimeFromB64(b64: string): string {
+  if (b64.startsWith("/9j/")) return "image/jpeg";
+  if (b64.startsWith("iVBOR")) return "image/png";
+  return "image/jpeg";
+}
+
+async function geminiVision(key: string, b64: string, prompt: string): Promise<string> {
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${key}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ contents: [{ parts: [{ inline_data: { mime_type: mimeFromB64(b64), data: b64 } }, { text: prompt }] }] }),
+  });
+  if (!r.ok) throw new Error(`Gemini ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  const j = await r.json();
+  return j?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+}
+
+async function openaiVision(key: string, b64: string, prompt: string): Promise<string> {
+  const r = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: [{ type: "text", text: prompt }, { type: "image_url", image_url: { url: `data:${mimeFromB64(b64)};base64,${b64}` } }] }],
+    }),
+  });
+  if (!r.ok) throw new Error(`OpenAI ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  const j = await r.json();
+  return j?.choices?.[0]?.message?.content || "";
+}
+
+const EXTRACT_PROMPT = `Analise a foto (fachada, placa, cartão ou anúncio de um estabelecimento/comércio) e extraia os dados para cadastro.
+Regras: "nome" deve ser o nome COMPLETO do negócio (com o tipo/ramo), nunca só o nome de uma pessoa. Se houver telefone, coloque em "celular" (somente dígitos, com DDD). Capture "rede_social" (@perfil/instagram/facebook), "site" (www), endereço, bairro, cidade, estado, cep, "categoria" (ramo) e "tags" (3-6 em minúsculas).
+Responda SOMENTE com JSON, sem markdown, com as chaves: nome, celular, telefone, rede_social, site, endereco, bairro, cidade, estado, cep, categoria, tags.`;
 
 async function callGemini(key: string, system: string, user: string): Promise<string> {
   const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${key}`, {
@@ -81,6 +118,34 @@ Deno.serve(async (req) => {
     }
 
     const body = (await req.json().catch(() => ({}))) as In;
+
+    // Modo VISÃO: extrai os dados do estabelecimento a partir da foto.
+    if (typeof body.image_base64 === "string" && body.image_base64) {
+      const errs: string[] = [];
+      let raw = "";
+      const prov = (body.provider || "default").toLowerCase();
+      const byo = (body.api_key || "").trim();
+      const chain: Array<[string | undefined, () => Promise<string>]> =
+        prov === "openai" && byo
+          ? [[byo, () => openaiVision(byo, body.image_base64!, EXTRACT_PROMPT)]]
+          : prov === "gemini" && byo
+          ? [[byo, () => geminiVision(byo, body.image_base64!, EXTRACT_PROMPT)]]
+          : [
+              [Deno.env.get("GEMINI_API_KEY"), () => geminiVision(Deno.env.get("GEMINI_API_KEY")!, body.image_base64!, EXTRACT_PROMPT)],
+              [Deno.env.get("OPENAI_API_KEY"), () => openaiVision(Deno.env.get("OPENAI_API_KEY")!, body.image_base64!, EXTRACT_PROMPT)],
+            ];
+      for (const [k, fn] of chain) {
+        if (!k) continue;
+        try { raw = await fn(); break; } catch (e) { errs.push(e instanceof Error ? e.message : String(e)); }
+      }
+      let extracted: Record<string, unknown> | null = null;
+      try { extracted = JSON.parse(raw.replace(/```json?\n?/g, "").replace(/```/g, "").trim()); } catch { extracted = null; }
+      return new Response(
+        JSON.stringify({ extracted, raw: extracted ? undefined : raw.slice(0, 400), error: extracted ? undefined : errs.join(" | ") || "Falha ao ler a foto" }),
+        { status: extracted ? 200 : 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     const lead = body.lead || {};
     const instruction = (body.instruction || "").trim();
     const prof = (body.professional_profile || "").trim();

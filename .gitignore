@@ -6,3 +6,5 @@ dist/
 !.env.example
 ios/App/App/public/
 *.xcarchive
+.vercel
+.env*
