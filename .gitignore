@@ -8,3 +8,6 @@ ios/App/App/public/
 *.xcarchive
 .vercel
 .env*
+
+ios/App/Pods/
+ios/App/build/
