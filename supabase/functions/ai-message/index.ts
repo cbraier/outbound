@@ -31,7 +31,7 @@ interface In {
 }
 
 async function callGemini(key: string, system: string, user: string): Promise<string> {
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`, {
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${key}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -111,22 +111,35 @@ Escreva a mensagem de prospecção personalizada.`;
 
     const provider = (body.provider || "default").toLowerCase();
     const byo = (body.api_key || "").trim();
+
     let text = "";
-
-    const useGemini = byo && provider === "gemini" ? byo : (provider === "gemini" ? Deno.env.get("GEMINI_API_KEY") : undefined);
-    const useOpenAI = byo && provider === "openai" ? byo : (provider === "openai" ? Deno.env.get("OPENAI_API_KEY") : undefined);
-    const useClaude = byo && provider === "anthropic" ? byo : (provider === "anthropic" ? Deno.env.get("ANTHROPIC_API_KEY") : undefined);
-
-    if (useGemini || (provider === "default" && Deno.env.get("GEMINI_API_KEY"))) {
-      text = await callGemini(useGemini || Deno.env.get("GEMINI_API_KEY")!, system, user);
-    } else if (useOpenAI || (provider === "default" && Deno.env.get("OPENAI_API_KEY"))) {
-      text = await callOpenAI(useOpenAI || Deno.env.get("OPENAI_API_KEY")!, system, user);
-    } else if (useClaude || (provider === "default" && Deno.env.get("ANTHROPIC_API_KEY"))) {
-      text = await callClaude(useClaude || Deno.env.get("ANTHROPIC_API_KEY")!, system, user);
+    if (provider !== "default" && byo) {
+      if (provider === "gemini") text = await callGemini(byo, system, user);
+      else if (provider === "openai") text = await callOpenAI(byo, system, user);
+      else if (provider === "anthropic") text = await callAnthropic(byo, system, user);
+      else {
+        return new Response(JSON.stringify({ error: "Provedor inválido." }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     } else {
-      return new Response(JSON.stringify({ error: "Nenhuma IA configurada. Escolha um provedor ou informe sua chave no Perfil." }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      const errs: string[] = [];
+      const chain: Array<[string | undefined, () => Promise<string>]> = [
+        [Deno.env.get("GEMINI_API_KEY"), () => callGemini(Deno.env.get("GEMINI_API_KEY")!, system, user)],
+        [Deno.env.get("OPENAI_API_KEY"), () => callOpenAI(Deno.env.get("OPENAI_API_KEY")!, system, user)],
+        [Deno.env.get("ANTHROPIC_API_KEY"), () => callAnthropic(Deno.env.get("ANTHROPIC_API_KEY")!, system, user)],
+      ];
+      for (const [key, fn] of chain) {
+        if (!key) continue;
+        try { text = await fn(); break; } catch (e) { errs.push(e instanceof Error ? e.message : String(e)); }
+      }
+      if (!text && errs.length === 0) {
+        return new Response(
+          JSON.stringify({ error: "Nenhuma IA configurada. Escolha um provedor ou informe sua chave no Perfil." }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      if (!text) throw new Error(errs.join(" | "));
     }
 
     let parsed: { ramo?: string; tags?: string[]; mensagem?: string; sugestoes?: string[] } | null = null;
