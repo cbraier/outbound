@@ -514,6 +514,10 @@ export default function ProfilePage() {
             <ul className="list-disc pl-5 text-[11px] text-brand-ink/70">
               {researchQs.map((q, i) => <li key={i}>{q}</li>)}
             </ul>
+            <div className="flex items-center justify-between">
+              <span className="label">Sua resposta</span>
+              <MicInto onText={(t) => setAnswers((p) => (p ? p + " " + t : t))} />
+            </div>
             <textarea className="input min-h-[90px]" value={answers} onChange={(e) => setAnswers(e.target.value)} placeholder="Responda aqui para enriquecer seu perfil..." />
             <button
               className="btn-ghost w-full"
