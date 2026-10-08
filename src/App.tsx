@@ -5,6 +5,7 @@ import { type Lead } from "@/lib/types";
 import Board from "@/components/Board";
 import ProfilePage from "@/components/ProfilePage";
 import NovoLead from "@/components/NovoLead";
+import Landing from "@/components/Landing";
 import Radar from "@/components/Radar";
 import AgendaPage from "@/components/AgendaPage";
 import { type CapturedLead } from "@/components/PhotoCapture";
@@ -38,7 +39,7 @@ function contextoDePerfil(p: ProfileRow): string | null {
   return parts.length ? parts.join("\n") : p.professional_profile;
 }
 
-function AuthScreen() {
+function AuthScreen({ onBack }: { onBack?: () => void }) {
   const { signIn, signUp } = useAuth();
   const [mode, setMode] = useState<"in" | "up">("in");
   const [email, setEmail] = useState("");
@@ -82,6 +83,11 @@ function AuthScreen() {
         <button className="mt-2 w-full text-xs font-semibold text-brand-ink/60" onClick={() => setMode(mode === "in" ? "up" : "in")}>
           {mode === "in" ? "Não tem conta? Criar" : "Já tenho conta? Entrar"}
         </button>
+        {onBack && (
+          <button className="mt-3 w-full text-[11px] font-semibold text-brand-ink/40" onClick={onBack}>
+            ← Voltar
+          </button>
+        )}
       </div>
     </div>
   );
@@ -91,6 +97,7 @@ function Shell() {
   const { user, loading, signOut } = useAuth();
   const [tab, setTab] = useState<"novo" | "board" | "radar" | "agenda" | "perfil">("novo");
   const [agendaFocus, setAgendaFocus] = useState<Date | null>(null);
+  const [showAuth, setShowAuth] = useState(false);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
 
@@ -142,7 +149,7 @@ function Shell() {
   };
 
   if (loading) return <div className="flex min-h-full items-center justify-center">Carregando...</div>;
-  if (!user) return <AuthScreen />;
+  if (!user) return showAuth ? <AuthScreen onBack={() => setShowAuth(false)} /> : <Landing onStart={() => setShowAuth(true)} />;
 
   return (
     <div className="min-h-full pb-20">
