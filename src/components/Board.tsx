@@ -26,6 +26,15 @@ export default function Board({
   const [open, setOpen] = useState<Lead | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [moveLead, setMoveLead] = useState<Lead | null>(null);
+  const [q, setQ] = useState("");
+  const [tagF, setTagF] = useState<string | null>(null);
+
+  const allTags = Array.from(new Set(leads.flatMap((l) => l.tags || []))).sort();
+  const filtered = leads.filter((l) => {
+    const okName = q.trim() ? (l.nome || "").toLowerCase().includes(q.trim().toLowerCase()) : true;
+    const okTag = tagF ? (l.tags || []).includes(tagF) : true;
+    return okName && okTag;
+  });
 
   const soltarEm = async (st: (typeof STAGES)[number]) => {
     if (!dragId) return;
@@ -42,12 +51,43 @@ export default function Board({
     await supabase.from("leads").update({ etapa: st } as never).eq("id", id);
     onRefresh();
   };
-  const followups = leads.filter(
+  const followups = filtered.filter(
     (l) => l.etapa === "prospect" && l.followup_due_at && new Date(l.followup_due_at) <= new Date() && !l.followup_sent_at,
   );
 
   return (
     <>
+      <div className="mb-3 space-y-2">
+        <div className="relative">
+          <MapPin className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-brand-ink/30" />
+          <input
+            className="input pl-9"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar por nome..."
+          />
+        </div>
+        {allTags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              onClick={() => setTagF(null)}
+              className={`rounded-full px-3 py-1 text-[11px] font-bold ${!tagF ? "bg-brand-deep text-white" : "border border-brand-purple/20 text-brand-ink/60"}`}
+            >
+              Todas
+            </button>
+            {allTags.map((t) => (
+              <button
+                key={t}
+                onClick={() => setTagF(tagF === t ? null : t)}
+                className={`rounded-full px-3 py-1 text-[11px] font-bold ${tagF === t ? "bg-brand-pink text-white" : "border border-brand-purple/20 text-brand-ink/60"}`}
+              >
+                #{t}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
       {followups.length > 0 && (
         <div className="mb-3 rounded-2xl border border-brand-gold/40 bg-brand-gold/10 p-3">
           <p className="text-xs font-bold text-brand-deep">
@@ -68,7 +108,7 @@ export default function Board({
       )}
       <div className="flex gap-3 overflow-x-auto pb-2">
         {STAGES.map((st) => {
-          const col = leads.filter((l) => l.etapa === st);
+          const col = filtered.filter((l) => l.etapa === st);
           return (
             <div
               key={st}

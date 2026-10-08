@@ -1,5 +1,38 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
+function osmFilter(sector: string): string {
+  const s = (sector || "").toLowerCase();
+  const map: [RegExp, string][] = [
+    [/mec[aâ]nic|oficina|auto ?center|funilar|car ?repair/, '["shop"="car_repair"]'],
+    [/supermerc|mercado|hipermerc|mercearia/, '["shop"="supermarket"]'],
+    [/restaurant|pizzar|churrasc/, '["amenity"="restaurant"]'],
+    [/lanch|hamburg|fast ?food|hot ?dog/, '["amenity"="fast_food"]'],
+    [/caf[eé]|cafeteria/, '["amenity"="cafe"]'],
+    [/padaria|panific/, '["shop"="bakery"]'],
+    [/a[çc]ougue|carnic/, '["shop"="butcher"]'],
+    [/farmac|drogaria/, '["amenity"="pharmacy"]'],
+    [/barbear|barber/, '["shop"="hairdresser"]'],
+    [/sal[aã]o|beleza|est[eé]tic|manicur/, '["shop"="beauty"]'],
+    [/pet ?shop|petshop|veterin/, '["shop"="pet"]'],
+    [/academia|fitness|crossfit|pilates/, '["leisure"="fitness_centre"]'],
+    [/cl[ií]nica|consult[oó]rio|odonto|dent/, '["amenity"="clinic"]'],
+    [/pousada|hotel|hot[eé]l|hostel/, '["tourism"="hotel"]'],
+    [/roupa|moda|boutique|vestu/, '["shop"="clothes"]'],
+    [/sapato|cal[çc]ado|t[eê]nis/, '["shop"="shoes"]'],
+    [/m[oó]veis|decora|moveleir/, '["shop"="furniture"]'],
+    [/material de constru|constru[çc]/, '["shop"="doityourself"]'],
+    [/papelaria/, '["shop"="stationery"]'],
+    [/[oó]tica|[oó]culos/, '["shop"="optician"]'],
+    [/conveni[eê]ncia|adega|bebida/, '["shop"="convenience"]'],
+    [/flor|jardin/, '["shop"="florist"]'],
+    [/eletr[oô]nic|inform[aá]tic|celular/, '["shop"="electronics"]'],
+    [/loja|com[eé]rcio|varejo/, '["shop"]'],
+  ];
+  for (const [re, f] of map) if (re.test(s)) return f;
+  const kw = (sector || "").replace(/["\\]/g, "").slice(0, 30).trim();
+  return kw ? `["name"~"${kw}",i]` : '["shop"]';
+}
+
 function parseJson(text: string): Record<string, unknown> | null {
   if (!text) return null;
   let t = text.replace(/```json?\n?/gi, "").replace(/```/g, "").trim();
@@ -59,6 +92,8 @@ interface In {
   radius?: number;
   sector?: string;
   limit?: number;
+  lat?: number;
+  lng?: number;
   socials?: Record<string, string>;
   instrucao?: string;
   history?: { q: string; a: string }[];
@@ -235,6 +270,116 @@ Deno.serve(async (req) => {
           status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+      // 0) Fonte REAL (Google Maps): Places API (New) por raio — se tivermos chave + lat/lng.
+      const GKEY = Deno.env.get("GOOGLE_PLACES_API_KEY") || Deno.env.get("GOOGLE_MAPS_API_KEY");
+      const glat = Number(body.lat);
+      const glng = Number(body.lng);
+      if (GKEY && Number.isFinite(glat) && Number.isFinite(glng) && glat !== 0 && glng !== 0) {
+        const gr = Math.min(50000, Math.max(1000, (radius || 10) * 1000));
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const out: any[] = [];
+        let pageToken = "";
+        try {
+          for (let page = 0; page < 3; page++) {
+            const reqBody: Record<string, unknown> = {
+              textQuery: sector,
+              languageCode: "pt-BR",
+              regionCode: "BR",
+              maxResultCount: 20,
+              locationRestriction: { circle: { center: { latitude: glat, longitude: glng }, radius: gr } },
+            };
+            if (pageToken) reqBody.pageToken = pageToken;
+            const resp = await fetchTimeout("https://places.googleapis.com/v1/places:searchText", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Goog-Api-Key": GKEY,
+                "X-Goog-FieldMask":
+                  "places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.websiteUri,places.location,nextPageToken",
+              },
+              body: JSON.stringify(reqBody),
+            }, 25000);
+            if (!resp.ok) {
+              const t = await resp.text();
+              return new Response(JSON.stringify({ error: `Google Places ${resp.status}: ${t.slice(0, 200)}` }), {
+                status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+              });
+            }
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const j: any = await resp.json();
+            for (const p of (j.places || [])) {
+              out.push({
+                nome: p.displayName?.text || "",
+                telefone: String(p.nationalPhoneNumber || "").replace(/\D/g, ""),
+                site: p.websiteUri || "",
+                endereco: p.formattedAddress || "",
+                cidade: "",
+                lat: p.location?.latitude ?? null,
+                lng: p.location?.longitude ?? null,
+              });
+            }
+            pageToken = j.nextPageToken || "";
+            if (!pageToken) break;
+          }
+          if (out.length) {
+            return new Response(JSON.stringify({ negocios: out, fonte: "google_places" }), {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+        } catch { /* cai para OSM/web */ }
+      }
+
+      // 1) Fonte REAL de lugares: OpenStreetMap (Overpass) por raio — se tivermos lat/lng.
+      const lat = Number(body.lat);
+      const lng = Number(body.lng);
+      if (Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && lng !== 0) {
+        const r = Math.min(60000, Math.max(1000, (radius || 10) * 1000));
+        const filter = osmFilter(sector);
+        const query = `[out:json][timeout:25];(nwr${filter}(around:${r},${lat},${lng}););out center 90 tags;`;
+        const mirrors = ["https://overpass.kumi.systems/api/interpreter", "https://overpass-api.de/api/interpreter"];
+        const osmDebug: string[] = [];
+        for (const host of mirrors) {
+        try {
+          const resp = await fetchTimeout(host, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+              "Accept": "application/json",
+              "User-Agent": "OutboundSales/1.0 (contato@zonn.com.br)",
+            },
+            body: "data=" + encodeURIComponent(query),
+          }, 35000);
+          osmDebug.push(`${host} -> ${resp.status}`);
+          if (resp.ok) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const j: any = await resp.json();
+            const neg = (j.elements || [])
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              .map((e: any) => ({
+                nome: e.tags?.name || "",
+                telefone: e.tags?.phone || e.tags?.["contact:phone"] || "",
+                site: e.tags?.website || e.tags?.["contact:website"] || "",
+                cidade: e.tags?.["addr:city"] || "",
+                lat: e.lat ?? e.center?.lat ?? null,
+                lng: e.lon ?? e.center?.lon ?? null,
+              }))
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              .filter((x: any) => x.nome);
+            if (neg.length) {
+              return new Response(JSON.stringify({ negocios: neg, fonte: "openstreetmap" }), {
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+              });
+            }
+          }
+        } catch (e) { osmDebug.push(`${host} -> ERRO ${String(e).slice(0, 120)}`); }
+        }
+        if (body.debug) {
+          return new Response(JSON.stringify({ osm_debug: osmDebug, query: body.sector, lat, lng, r }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
+
       const sources: { title: string; url: string; text: string }[] = [];
       const EXA = Deno.env.get("EXA_API_KEY");
       const TAV = Deno.env.get("TAVILY_API_KEY");

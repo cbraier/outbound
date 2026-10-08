@@ -110,6 +110,18 @@ async function extrairTexto(file: File): Promise<string> {
   throw new Error("Formato não suportado. Use PDF ou DOCX.");
 }
 
+function tagFromSector(s: string): string {
+  const w =
+    (s || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9 ]/g, " ")
+      .trim()
+      .split(/\s+/)[0] || "";
+  return w.replace(/s$/, "");
+}
+
 export default function ProfilePage() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -129,7 +141,7 @@ export default function ProfilePage() {
   const [interviewing, setInterviewing] = useState(false);
   const [interviewDone, setInterviewDone] = useState(false);
   const [discSector, setDiscSector] = useState("");
-  const [discList, setDiscList] = useState<{ nome?: string; site?: string; telefone?: string; cidade?: string }[]>([]);
+  const [discList, setDiscList] = useState<{ nome?: string; site?: string; telefone?: string; cidade?: string; endereco?: string; lat?: number; lng?: number }[]>([]);
   const [discBusy, setDiscBusy] = useState(false);
   const [discMsg, setDiscMsg] = useState("");
   const [discSel, setDiscSel] = useState<number[]>([]);
@@ -150,6 +162,8 @@ export default function ProfilePage() {
     work_address: "",
     radius_km: 15,
     region: "",
+    work_lat: 0,
+    work_lng: 0,
     resume_text: "",
     resume_url: "",
     socials: {} as Record<string, string>,
@@ -178,6 +192,8 @@ export default function ProfilePage() {
             work_address: data.work_address || "",
             radius_km: data.radius_km ?? 15,
             region: data.region || "Florianópolis, São José, Palhoça, Biguaçu, Garopaba",
+            work_lat: (data.work_lat as number) || 0,
+            work_lng: (data.work_lng as number) || 0,
             resume_text: data.resume_text || "",
             resume_url: data.resume_url || "",
             socials: (data.socials as Record<string, string>) || {},
@@ -341,7 +357,16 @@ export default function ProfilePage() {
     setDiscList([]);
     try {
       const { data, error } = await supabase.functions.invoke("ai-message", {
-        body: { action: "discover", sector: discSector.trim(), region: f.region, city: f.work_address || undefined, radius: f.radius_km, limit: 12 },
+        body: {
+          action: "discover",
+          sector: discSector.trim(),
+          region: f.region,
+          city: f.work_address || undefined,
+          radius: f.radius_km,
+          lat: f.work_lat || undefined,
+          lng: f.work_lng || undefined,
+          limit: 12,
+        },
       });
       if (error) throw error;
       if (data?.error) {
@@ -358,14 +383,19 @@ export default function ProfilePage() {
     }
   };
 
-  const addDiscoverLead = async (n: { nome?: string; site?: string; telefone?: string; cidade?: string }) => {
+  const addDiscoverLead = async (n: { nome?: string; site?: string; telefone?: string; cidade?: string; endereco?: string; lat?: number; lng?: number }) => {
     if (!user) return;
+    const tag = tagFromSector(discSector);
     const { error } = await supabase.from("leads").insert({
       user_id: user.id,
       nome: n.nome || "Sem nome",
       site: n.site || null,
       telefone: (n.telefone || "").replace(/\D/g, "") || null,
       cidade: n.cidade || null,
+      endereco: n.endereco || null,
+      lat: n.lat ?? null,
+      lng: n.lng ?? null,
+      tags: tag ? [tag] : [],
       etapa: "lead",
       origem: "discovery",
     } as never);
@@ -553,7 +583,7 @@ export default function ProfilePage() {
                     />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-bold text-brand-deep">{n.nome}</p>
-                      <p className="truncate text-[11px] text-brand-ink/50">{[n.cidade, n.site].filter(Boolean).join(" · ")}</p>
+                      <p className="truncate text-[11px] text-brand-ink/50">{[n.endereco || n.cidade, n.site].filter(Boolean).join(" · ")}</p>
                     </div>
                   </label>
                 );
