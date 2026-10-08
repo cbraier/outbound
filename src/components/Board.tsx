@@ -21,7 +21,7 @@ export default function Board({
   leads: Lead[];
   profile: Parameters<typeof LeadDrawer>[0]["profile"] | null;
   onRefresh: () => void;
-  onGoToAgenda?: () => void;
+  onGoToAgenda?: (d?: Date) => void;
 }) {
   const [open, setOpen] = useState<Lead | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);

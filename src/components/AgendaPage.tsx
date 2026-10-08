@@ -27,7 +27,7 @@ const TIPOS = [
   { v: "outro", label: "Outro", cor: "#6b7280" },
 ];
 
-export default function AgendaPage() {
+export default function AgendaPage({ focus }: { focus?: Date | null }) {
   const { user } = useAuth();
   const [cursor, setCursor] = useState(new Date());
   const [selected, setSelected] = useState(new Date());
@@ -52,6 +52,13 @@ export default function AgendaPage() {
   }, [user?.id]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    if (focus) {
+      setCursor(focus);
+      setSelected(focus);
+    }
+  }, [focus]);
 
   const days = useMemo(() => eachDayOfInterval({ start: startOfMonth(cursor), end: endOfMonth(cursor) }), [cursor]);
   const dayEvents = events.filter((e) => isSameDay(new Date(e.data_inicio), selected));

@@ -191,10 +191,13 @@ export default function ProfilePage() {
         site: withHttps(f.site),
         work_address: f.work_address,
         radius_km: Number(f.radius_km) || 15,
+        ai_provider: f.ai_provider,
+        ai_api_key: f.ai_api_key,
+        ai_keys: f.ai_keys,
       } as never, { onConflict: "user_id" });
     }, 1500);
     return () => window.clearTimeout(t);
-  }, [f.ai_instruction, f.professional_profile, f.fixed_message, f.followup_message, f.socials, f.site, f.work_address, f.radius_km]);
+  }, [f.ai_instruction, f.professional_profile, f.fixed_message, f.followup_message, f.socials, f.site, f.work_address, f.radius_km, f.ai_provider, f.ai_api_key, f.ai_keys]);
 
   const salvar = async () => {
     if (!user) return;
@@ -355,8 +358,10 @@ export default function ProfilePage() {
                     className="btn-ghost shrink-0 !px-2"
                     title="Copiar link"
                     onClick={() => {
-                      navigator.clipboard.writeText(f.socials[s.k]);
-                      alert("Link copiado:\n" + f.socials[s.k]);
+                      const link = socialUrl(s.k, f.socials[s.k]);
+                      setSocial(s.k, link);
+                      navigator.clipboard.writeText(link);
+                      alert("Link copiado:\n" + link);
                     }}
                   >
                     <Copy className="h-3.5 w-3.5" />

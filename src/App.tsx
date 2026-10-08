@@ -90,6 +90,7 @@ function AuthScreen() {
 function Shell() {
   const { user, loading, signOut } = useAuth();
   const [tab, setTab] = useState<"novo" | "board" | "radar" | "agenda" | "perfil">("novo");
+  const [agendaFocus, setAgendaFocus] = useState<Date | null>(null);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
 
@@ -159,7 +160,7 @@ function Shell() {
             leads={leads}
             profile={profile ? { ...profile, professional_profile: contextoDePerfil(profile) } : null}
             onRefresh={load}
-            onGoToAgenda={() => setTab("agenda")}
+            onGoToAgenda={(d) => { setAgendaFocus(d || new Date()); setTab("agenda"); }}
           />
         )}
         {tab === "radar" && (
@@ -170,7 +171,7 @@ function Shell() {
             onRefresh={load}
           />
         )}
-        {tab === "agenda" && <AgendaPage />}
+        {tab === "agenda" && <AgendaPage focus={agendaFocus} />}
         {tab === "perfil" && <ProfilePage />}
       </main>
 

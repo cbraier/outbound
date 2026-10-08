@@ -24,7 +24,7 @@ export default function LeadDrawer({
   profile: { ai_instruction: string | null; professional_profile: string | null; fixed_message: string | null; followup_message?: string | null; ai_provider: string | null; ai_api_key: string | null; site: string | null };
   onClose: () => void;
   onSaved: () => void;
-  onGoToAgenda?: () => void;
+  onGoToAgenda?: (d?: Date) => void;
 }) {
   const [l, setL] = useState<Lead>(lead);
   const [msg, setMsg] = useState(lead.mensagem || "");
@@ -139,17 +139,23 @@ export default function LeadDrawer({
   };
 
   const agendar = async (tipo: string, label: string) => {
-    await supabase.from("agenda_events").insert({
+    const when = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    when.setHours(9, 0, 0, 0);
+    const { error } = await supabase.from("agenda_events").insert({
       user_id: l.user_id,
       titulo: `${label} — ${l.nome}`,
       tipo,
-      data_inicio: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      data_inicio: when.toISOString(),
       alerta_minutos: 30,
       lead_id: l.id,
     } as never);
+    if (error) {
+      alert("Não deu pra agendar: " + error.message);
+      return;
+    }
     setTipoOpen(false);
     onSaved();
-    onGoToAgenda?.();
+    onGoToAgenda?.(when);
   };
 
   const stageIdx = STAGES.indexOf(l.etapa);

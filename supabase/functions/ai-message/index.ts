@@ -1,5 +1,15 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
+async function fetchTimeout(input: RequestInfo | URL, init: RequestInit = {}, ms = 30000): Promise<Response> {
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(input, { ...init, signal: init.signal ?? ctrl.signal });
+  } finally {
+    clearTimeout(to);
+  }
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -72,7 +82,7 @@ function mimeFromB64(b64: string): string {
 }
 
 async function geminiVision(key: string, b64: string, prompt: string): Promise<string> {
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${key}`, {
+  const r = await fetchTimeout(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${key}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ contents: [{ parts: [{ inline_data: { mime_type: mimeFromB64(b64), data: b64 } }, { text: prompt }] }] }),
@@ -83,7 +93,7 @@ async function geminiVision(key: string, b64: string, prompt: string): Promise<s
 }
 
 async function openaiVision(key: string, b64: string, prompt: string): Promise<string> {
-  const r = await fetch("https://api.openai.com/v1/chat/completions", {
+  const r = await fetchTimeout("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -101,7 +111,7 @@ Regras: "nome" deve ser o nome COMPLETO do negócio (com o tipo/ramo), nunca só
 Responda SOMENTE com JSON, sem markdown, com as chaves: nome, celular, telefone, rede_social, site, endereco, bairro, cidade, estado, cep, categoria, tags.`;
 
 async function callGemini(key: string, system: string, user: string): Promise<string> {
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${key}`, {
+  const r = await fetchTimeout(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${key}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -116,7 +126,7 @@ async function callGemini(key: string, system: string, user: string): Promise<st
 }
 
 async function callOpenAI(key: string, system: string, user: string): Promise<string> {
-  const r = await fetch("https://api.openai.com/v1/chat/completions", {
+  const r = await fetchTimeout("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({ model: "gpt-4o-mini", temperature: 0.7, messages: [{ role: "system", content: system }, { role: "user", content: user }] }),
@@ -127,7 +137,7 @@ async function callOpenAI(key: string, system: string, user: string): Promise<st
 }
 
 async function callDeepSeek(key: string, system: string, user: string): Promise<string> {
-  const r = await fetch("https://api.deepseek.com/chat/completions", {
+  const r = await fetchTimeout("https://api.deepseek.com/chat/completions", {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({ model: "deepseek-chat", temperature: 0.7, messages: [{ role: "system", content: system }, { role: "user", content: user }] }),
@@ -138,7 +148,7 @@ async function callDeepSeek(key: string, system: string, user: string): Promise<
 }
 
 async function callAnthropic(key: string, system: string, user: string): Promise<string> {
-  const r = await fetch("https://api.anthropic.com/v1/messages", {
+  const r = await fetchTimeout("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
     body: JSON.stringify({ model: "claude-3-5-haiku-latest", max_tokens: 1024, system, messages: [{ role: "user", content: user }] }),
@@ -176,7 +186,7 @@ Deno.serve(async (req) => {
           else if (provider === "openai") out = await callOpenAI(byo, sys, usr);
           else if (provider === "anthropic") out = await callAnthropic(byo, sys, usr);
           else if (provider === "deepseek") out = await callDeepSeek(byo, sys, usr);
-          else return new Response(JSON.stringify({ ok: false, error: "Provedor inválido." }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          else return new Response(JSON.stringify({ ok: false, error: "Provedor inválido." }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         } else {
           const chain: Array<[string | undefined, () => Promise<string>]> = [
             [Deno.env.get("GEMINI_API_KEY"), () => callGemini(Deno.env.get("GEMINI_API_KEY")!, sys, usr)],
@@ -189,11 +199,11 @@ Deno.serve(async (req) => {
             if (!k) continue;
             try { out = await fn(); break; } catch (e) { errs.push(String(e)); }
           }
-          if (!out) return new Response(JSON.stringify({ ok: false, error: errs.join(" | ") || "Nenhum provedor padrão configurado." }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          if (!out) return new Response(JSON.stringify({ ok: false, error: errs.join(" | ") || "Nenhum provedor padrão configurado." }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
         return new Response(JSON.stringify({ ok: true, provider, sample: (out || "").slice(0, 80) }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       } catch (e) {
-        return new Response(JSON.stringify({ ok: false, error: e instanceof Error ? e.message : "Falha" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ ok: false, error: e instanceof Error ? e.message : "Falha" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
     }
 
@@ -237,7 +247,7 @@ Deno.serve(async (req) => {
           fd.append("file", new Blob([bin], { type: mime }), `audio.${ext}`);
           fd.append("model", "whisper-1");
           fd.append("language", "pt");
-          const r = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+          const r = await fetchTimeout("https://api.openai.com/v1/audio/transcriptions", {
             method: "POST",
             headers: { Authorization: `Bearer ${oKey}` },
             body: fd,
@@ -280,7 +290,7 @@ Deno.serve(async (req) => {
           const u = /^https?:\/\//i.test(body.site) ? body.site : `https://${body.site}`;
           const ctrl = new AbortController();
           const to = setTimeout(() => ctrl.abort(), 8000);
-          const r = await fetch(u, { headers: { "User-Agent": "OutboundSales/1.0 (contato@zonn.com.br)" }, signal: ctrl.signal });
+          const r = await fetchTimeout(u, { headers: { "User-Agent": "OutboundSales/1.0 (contato@zonn.com.br)" }, signal: ctrl.signal });
           clearTimeout(to);
           const html = await r.text();
           siteText = stripHtml(html).slice(0, 4000);
@@ -300,7 +310,7 @@ Deno.serve(async (req) => {
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       } catch (e) {
         return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Falha na pesquisa" }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
     }
