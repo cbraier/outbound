@@ -159,6 +159,7 @@ function Shell() {
             leads={leads}
             profile={profile ? { ...profile, professional_profile: contextoDePerfil(profile) } : null}
             onRefresh={load}
+            onGoToAgenda={() => setTab("agenda")}
           />
         )}
         {tab === "radar" && (

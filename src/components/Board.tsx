@@ -2,7 +2,7 @@ import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { type Lead, STAGES, STAGE_LABELS } from "@/lib/types";
 import LeadDrawer from "@/components/LeadDrawer";
-import { MapPin } from "lucide-react";
+import { MapPin, ArrowRightLeft } from "lucide-react";
 
 const STAGE_COLOR: Record<string, string> = {
   lead: "from-brand-sky/30 to-brand-sky/10",
@@ -16,18 +16,29 @@ export default function Board({
   leads,
   profile,
   onRefresh,
+  onGoToAgenda,
 }: {
   leads: Lead[];
   profile: Parameters<typeof LeadDrawer>[0]["profile"] | null;
   onRefresh: () => void;
+  onGoToAgenda?: () => void;
 }) {
   const [open, setOpen] = useState<Lead | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
+  const [moveLead, setMoveLead] = useState<Lead | null>(null);
 
   const soltarEm = async (st: (typeof STAGES)[number]) => {
     if (!dragId) return;
     const id = dragId;
     setDragId(null);
+    await supabase.from("leads").update({ etapa: st } as never).eq("id", id);
+    onRefresh();
+  };
+
+  const moverPara = async (st: (typeof STAGES)[number]) => {
+    if (!moveLead) return;
+    const id = moveLead.id;
+    setMoveLead(null);
     await supabase.from("leads").update({ etapa: st } as never).eq("id", id);
     onRefresh();
   };
@@ -71,13 +82,13 @@ export default function Board({
               </div>
               <div className="space-y-2">
                 {col.map((l) => (
-                  <button
+                  <div
                     key={l.id}
                     draggable
                     onDragStart={() => setDragId(l.id)}
                     onDragEnd={() => setDragId(null)}
                     onClick={() => setOpen(l)}
-                    className={`card w-full p-2 text-left transition hover:-translate-y-0.5 ${dragId === l.id ? "opacity-50" : ""}`}
+                    className={`card relative w-full cursor-pointer p-2 pr-7 text-left transition hover:-translate-y-0.5 ${dragId === l.id ? "opacity-50" : ""}`}
                   >
                     <div className="flex gap-2">
                       {l.foto_url ? (
@@ -94,7 +105,14 @@ export default function Board({
                         )}
                       </div>
                     </div>
-                  </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setMoveLead(l); }}
+                      className="absolute right-1 top-1 rounded-full p-1.5 hover:bg-black/5"
+                      title="Mover para outra etapa"
+                    >
+                      <ArrowRightLeft className="h-3.5 w-3.5 text-brand-ink/40" />
+                    </button>
+                  </div>
                 ))}
                 {col.length === 0 && <p className="rounded-xl border border-dashed border-brand-purple/15 py-4 text-center text-[11px] text-brand-ink/40">vazio</p>}
               </div>
@@ -108,11 +126,29 @@ export default function Board({
           lead={open}
           profile={profile}
           onClose={() => setOpen(null)}
-          onSaved={() => {
-            setOpen(null);
-            onRefresh();
-          }}
+          onSaved={() => { setOpen(null); onRefresh(); }}
+          onGoToAgenda={onGoToAgenda}
         />
+      )}
+
+      {moveLead && (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/30" onClick={() => setMoveLead(null)}>
+          <div className="w-full rounded-t-2xl bg-white p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]" onClick={(e) => e.stopPropagation()}>
+            <p className="mb-3 text-sm font-bold text-brand-deep">Mover “{moveLead.nome}” para:</p>
+            <div className="grid grid-cols-2 gap-2">
+              {STAGES.map((st) => (
+                <button
+                  key={st}
+                  disabled={moveLead.etapa === st}
+                  onClick={() => moverPara(st)}
+                  className={`btn-ghost ${moveLead.etapa === st ? "opacity-40" : ""}`}
+                >
+                  {STAGE_LABELS[st]}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

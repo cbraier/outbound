@@ -5,16 +5,26 @@ import { brWaLink, openExternalLink } from "@/lib/wa";
 import { montar } from "@/lib/message";
 import { X, Sparkles, Loader2, Send, Save, MessageCircle, ExternalLink, CalendarClock } from "lucide-react";
 
+const TIPOS_AG = [
+  { v: "follow-up", label: "Follow-up" },
+  { v: "reuniao", label: "Reunião" },
+  { v: "ligacao", label: "Ligação" },
+  { v: "visita", label: "Visita" },
+  { v: "outro", label: "Outro" },
+];
+
 export default function LeadDrawer({
   lead,
   profile,
   onClose,
   onSaved,
+  onGoToAgenda,
 }: {
   lead: Lead;
   profile: { ai_instruction: string | null; professional_profile: string | null; fixed_message: string | null; followup_message?: string | null; ai_provider: string | null; ai_api_key: string | null; site: string | null };
   onClose: () => void;
   onSaved: () => void;
+  onGoToAgenda?: () => void;
 }) {
   const [l, setL] = useState<Lead>(lead);
   const [msg, setMsg] = useState(lead.mensagem || "");
@@ -22,6 +32,7 @@ export default function LeadDrawer({
   const [saving, setSaving] = useState(false);
   const [zoom, setZoom] = useState(false);
   const [iaInfo, setIaInfo] = useState("");
+  const [tipoOpen, setTipoOpen] = useState(false);
 
   useEffect(() => setL(lead), [lead]);
 
@@ -127,16 +138,18 @@ export default function LeadDrawer({
     }
   };
 
-  const agendarFup = async () => {
+  const agendar = async (tipo: string, label: string) => {
     await supabase.from("agenda_events").insert({
       user_id: l.user_id,
-      titulo: `Pesquisa — ${l.nome}`,
-      tipo: "follow-up",
+      titulo: `${label} — ${l.nome}`,
+      tipo,
       data_inicio: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
       alerta_minutos: 30,
       lead_id: l.id,
     } as never);
-    alert("Follow-up agendado para amanhã na Agenda.");
+    setTipoOpen(false);
+    onSaved();
+    onGoToAgenda?.();
   };
 
   const stageIdx = STAGES.indexOf(l.etapa);
@@ -222,10 +235,20 @@ export default function LeadDrawer({
           <button className="btn-primary" onClick={enviarWhats}>
             <MessageCircle className="h-4 w-4" /> Enviar no WhatsApp
           </button>
-          <button className="btn-ghost" onClick={agendarFup} title="Agendar follow-up para amanhã">
-            <CalendarClock className="h-4 w-4" /> Agendar FUP
+          <button className="btn text-white" style={{ background: "#22C55E" }} onClick={() => setTipoOpen((v) => !v)} title="Agendar compromisso">
+            <CalendarClock className="h-4 w-4" /> Agendar
           </button>
         </div>
+        {tipoOpen && (
+          <div className="mt-2 grid grid-cols-3 gap-2 rounded-xl border border-brand-money/30 bg-brand-money/5 p-2">
+            <span className="col-span-3 text-[11px] font-semibold text-brand-deep">Tipo de compromisso (amanhã, 9h):</span>
+            {TIPOS_AG.map((t) => (
+              <button key={t.v} className="btn-ghost !px-2 !py-1.5 !text-xs" onClick={() => agendar(t.v, t.label)}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        )}
         <p className="mt-2 text-[11px] text-brand-ink/50">
           “Salvar” guarda o lead/mensagem sem enviar. Ao enviar, ele vai para <b>Prospect</b>.
         </p>

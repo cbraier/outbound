@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { getCurrentLocation, reverseGeocode } from "@/lib/geo";
 import { socialUrl } from "@/lib/format";
-import { Loader2, Save, Paperclip, MapPin, X, Mic, Square, Sparkles } from "lucide-react";
+import { Loader2, Save, Paperclip, MapPin, X, Mic, Square, Sparkles, Copy } from "lucide-react";
 
 async function blobToB64(blob: Blob): Promise<string> {
   return new Promise((res, rej) => {
@@ -341,13 +341,28 @@ export default function ProfilePage() {
           {SOCIAL_KEYS.map((s) => (
             <div key={s.k}>
               <span className="label">{s.label}</span>
-              <input
-                className="input"
-                value={f.socials[s.k] || ""}
-                onChange={(e) => setSocial(s.k, e.target.value)}
-                onBlur={(e) => setSocial(s.k, socialUrl(s.k, e.target.value))}
-                placeholder={s.k === "whatsapp" ? "(48) 99999-9999" : `@seu${s.k}`}
-              />
+              <div className="flex gap-1">
+                <input
+                  className="input"
+                  value={f.socials[s.k] || ""}
+                  onChange={(e) => setSocial(s.k, e.target.value)}
+                  onBlur={(e) => setSocial(s.k, socialUrl(s.k, e.target.value))}
+                  placeholder={s.k === "whatsapp" ? "(48) 99999-9999" : `@seu${s.k}`}
+                />
+                {f.socials[s.k] && (
+                  <button
+                    type="button"
+                    className="btn-ghost shrink-0 !px-2"
+                    title="Copiar link"
+                    onClick={() => {
+                      navigator.clipboard.writeText(f.socials[s.k]);
+                      alert("Link copiado:\n" + f.socials[s.k]);
+                    }}
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>
