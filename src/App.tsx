@@ -11,7 +11,7 @@ import { initBilling, hasActiveEntitlement, getCurrentOffering, isNative } from 
 import Radar from "@/components/Radar";
 import AgendaPage from "@/components/AgendaPage";
 import { type CapturedLead } from "@/components/PhotoCapture";
-import { LayoutGrid, User, LogOut, Plus, Radar as RadarIcon, Calendar as CalendarIcon } from "lucide-react";
+import { LayoutGrid, User, LogOut, Plus, Radar as RadarIcon, Calendar as CalendarIcon, Eye, EyeOff } from "lucide-react";
 
 interface ProfileRow {
   ai_instruction: string | null;
@@ -51,6 +51,7 @@ function AuthScreen({ onBack }: { onBack?: () => void }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [info, setInfo] = useState("");
+  const [showPwd, setShowPwd] = useState(false);
 
   const submit = async () => {
     setBusy(true);
@@ -76,7 +77,20 @@ function AuthScreen({ onBack }: { onBack?: () => void }) {
         <div className="space-y-3">
           {mode === "up" && <div><span className="label">Nome</span><input className="input" value={nome} onChange={(e) => setNome(e.target.value)} /></div>}
           <div><span className="label">E-mail</span><input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
-          <div><span className="label">Senha</span><input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></div>
+          <div>
+            <span className="label">Senha</span>
+            <div className="relative">
+              <input className="input pr-10" type={showPwd ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} />
+              <button
+                type="button"
+                onClick={() => setShowPwd((s) => !s)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-ink/40"
+                aria-label={showPwd ? "Ocultar senha" : "Mostrar senha"}
+              >
+                {showPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+          </div>
         </div>
         {err && <p className="mt-2 text-xs text-red-500">{err}</p>}
         {info && <p className="mt-2 text-xs font-semibold text-brand-ink">{info}</p>}
