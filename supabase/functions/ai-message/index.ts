@@ -33,6 +33,46 @@ function osmFilter(sector: string): string {
   return kw ? `["name"~"${kw}",i]` : '["shop"]';
 }
 
+function osmTag(sector: string): string {
+  const s = (sector || "").toLowerCase();
+  const map: [RegExp, string][] = [
+    [/mec[aâ]nic|oficina|auto ?center|funilar|car ?repair/, "shop:car_repair"],
+    [/supermerc|mercado|hipermerc|mercearia/, "shop:supermarket"],
+    [/pizzar|churrasc|restaurante/, "amenity:restaurant"],
+    [/lanch|hamburg|fast ?food|hot ?dog|cachorro ?quente/, "amenity:fast_food"],
+    [/caf[eé]|cafeteria/, "amenity:cafe"],
+    [/padaria|panific/, "shop:bakery"],
+    [/a[çc]ougue|carnic/, "shop:butcher"],
+    [/farmac|drogaria/, "amenity:pharmacy"],
+    [/barbear|barber/, "shop:hairdresser"],
+    [/sal[aã]o|beleza|est[eé]tic|manicur/, "shop:beauty"],
+    [/pet ?shop|petshop|veterin/, "shop:pet"],
+    [/academia|fitness|crossfit|pilates/, "leisure:fitness_centre"],
+    [/cl[ií]nica|consult[oó]rio|odonto|dent/, "amenity:clinic"],
+    [/pousada|hotel|hot[eé]l|hostel/, "tourism:hotel"],
+    [/roupa|moda|boutique|vestu/, "shop:clothes"],
+    [/sapato|cal[çc]ado|t[eê]nis/, "shop:shoes"],
+    [/m[oó]veis|decora|moveleir/, "shop:furniture"],
+    [/material de constru|constru[çc]/, "shop:doityourself"],
+    [/papelaria/, "shop:stationery"],
+    [/[oó]tica|[oó]culos/, "shop:optician"],
+    [/conveni[eê]ncia|adega|bebida/, "shop:convenience"],
+    [/flor|jardin/, "shop:florist"],
+  ];
+  for (const [re, t] of map) if (re.test(s)) return t;
+  return "";
+}
+
+function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6371;
+  const dLat = ((bLat - aLat) * Math.PI) / 180;
+  const dLng = ((bLng - aLng) * Math.PI) / 180;
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((aLat * Math.PI) / 180) * Math.cos((bLat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+
 function parseJson(text: string): Record<string, unknown> | null {
   if (!text) return null;
   let t = text.replace(/```json?\n?/gi, "").replace(/```/g, "").trim();
@@ -329,55 +369,51 @@ Deno.serve(async (req) => {
         } catch { /* cai para OSM/web */ }
       }
 
-      // 1) Fonte REAL de lugares: OpenStreetMap (Overpass) por raio — se tivermos lat/lng.
+      // 1) Fonte REAL gratuita: Photon (OpenStreetMap) por categoria + proximidade (funciona na edge).
       const lat = Number(body.lat);
       const lng = Number(body.lng);
       if (Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && lng !== 0) {
-        const r = Math.min(60000, Math.max(1000, (radius || 10) * 1000));
-        const filter = osmFilter(sector);
-        const query = `[out:json][timeout:25];(nwr${filter}(around:${r},${lat},${lng}););out center 90 tags;`;
-        const mirrors = ["https://overpass.kumi.systems/api/interpreter", "https://overpass-api.de/api/interpreter"];
-        const osmDebug: string[] = [];
-        for (const host of mirrors) {
+        const radiusKm = radius || 10;
+        const tag = osmTag(sector);
+        const url =
+          `https://photon.komoot.io/api/?q=${encodeURIComponent(sector)}&limit=50&lat=${lat}&lon=${lng}` +
+          (tag ? `&osm_tag=${encodeURIComponent(tag)}` : "");
         try {
-          const resp = await fetchTimeout(host, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/x-www-form-urlencoded",
-              "Accept": "application/json",
-              "User-Agent": "OutboundSales/1.0 (contato@zonn.com.br)",
-            },
-            body: "data=" + encodeURIComponent(query),
-          }, 35000);
-          osmDebug.push(`${host} -> ${resp.status}`);
+          const resp = await fetchTimeout(url, { headers: { "User-Agent": "OutboundSales/1.0 (contato@zonn.com.br)" } }, 25000);
           if (resp.ok) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const j: any = await resp.json();
-            const neg = (j.elements || [])
+            const neg = (j.features || [])
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              .map((e: any) => ({
-                nome: e.tags?.name || "",
-                telefone: e.tags?.phone || e.tags?.["contact:phone"] || "",
-                site: e.tags?.website || e.tags?.["contact:website"] || "",
-                cidade: e.tags?.["addr:city"] || "",
-                lat: e.lat ?? e.center?.lat ?? null,
-                lng: e.lon ?? e.center?.lon ?? null,
-              }))
+              .map((f: any) => {
+                const p = f.properties || {};
+                const c = f.geometry?.coordinates || [];
+                return {
+                  nome: p.name || "",
+                  telefone: String(p.phone || p["contact:phone"] || "").replace(/\D/g, ""),
+                  site: p.website || p["contact:website"] || "",
+                  endereco: [p.street, p.housenumber, p.city].filter(Boolean).join(", "),
+                  cidade: p.city || "",
+                  lat: c[1] ?? null,
+                  lng: c[0] ?? null,
+                };
+              })
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              .filter((x: any) => x.nome);
-            if (neg.length) {
-              return new Response(JSON.stringify({ negocios: neg, fonte: "openstreetmap" }), {
+              .filter((x: any) => x.nome && x.lat != null)
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              .map((x: any) => ({ ...x, _d: haversineKm(lat, lng, x.lat, x.lng) }))
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              .sort((a: any, b: any) => a._d - b._d);
+            let within = neg.filter((x: { _d: number }) => x._d <= radiusKm);
+            if (within.length < 6) within = neg.slice(0, 15);
+            const negocios = within.map(({ _d, ...rest }: { _d: number }) => rest);
+            if (negocios.length) {
+              return new Response(JSON.stringify({ negocios, fonte: "photon" }), {
                 headers: { ...corsHeaders, "Content-Type": "application/json" },
               });
             }
           }
-        } catch (e) { osmDebug.push(`${host} -> ERRO ${String(e).slice(0, 120)}`); }
-        }
-        if (body.debug) {
-          return new Response(JSON.stringify({ osm_debug: osmDebug, query: body.sector, lat, lng, r }), {
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
+        } catch { /* cai para o fallback web */ }
       }
 
       const sources: { title: string; url: string; text: string }[] = [];
