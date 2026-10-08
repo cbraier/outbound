@@ -45,7 +45,7 @@ export default function LeadDrawer({
     setWebInfo("");
     try {
       const { data, error } = await supabase.functions.invoke("ai-message", {
-        body: { action: "enrich", nome: l.nome, site: l.site || undefined, city: l.cidade || undefined, region: profile.region || undefined },
+        body: { action: "enrich", nome: l.nome, site: l.site || undefined, city: l.cidade || l.endereco || undefined },
       });
       if (error) throw error;
       if (data?.error) {

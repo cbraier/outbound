@@ -472,13 +472,12 @@ Deno.serve(async (req) => {
       const nome = body.nome || "";
       const site = body.site || "";
       const cidade = body.city || "";
-      const region = body.region || "Florianópolis, São José, Palhoça, Biguaçu, Garopaba";
       const sources: { title: string; url: string; text: string }[] = [];
       const EXA = Deno.env.get("EXA_API_KEY");
       const TAV = Deno.env.get("TAVILY_API_KEY");
       if (EXA) {
         try {
-          const q = [nome, cidade || region, region, "site oficial instagram facebook contato"].filter(Boolean).join(" ");
+          const q = [nome, cidade, "site oficial instagram facebook contato"].filter(Boolean).join(" ");
           const r = await fetchTimeout("https://api.exa.ai/search", {
             method: "POST",
             headers: { "x-api-key": EXA, "Content-Type": "application/json" },
@@ -492,7 +491,7 @@ Deno.serve(async (req) => {
       }
       if (TAV) {
         try {
-          const q = [nome, cidade || region, region].filter(Boolean).join(" ");
+          const q = [nome, cidade].filter(Boolean).join(" ");
           const r = await fetchTimeout("https://api.tavily.com/search", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -510,15 +509,16 @@ Deno.serve(async (req) => {
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
-      const system = `Você analisa um prospect a partir de fontes públicas da web e ajuda um vendedor a ofertar serviços de prospecção/tecnologia.\nIMPORTANTE: considere SOMENTE negócios/fontes da região: ${region}. Desconsidere o que for de outras cidades; se não houver nada da região, diga isso. Responda SOMENTE JSON, sem markdown.`;
-      const user = `Prospect: ${nome}${site ? ` — site: ${site}` : ""}${cidade ? ` — ${cidade}` : ""}\n\nFontes encontradas:\n${sources.map((s, i) => `[${i + 1}] ${s.title} ${s.url}\n${s.text}`).join("\n\n")}\n\nResponda JSON: { "resumo": "o que o negócio é e faz", "presenca_digital": "site/redes/nota", "oportunidades": ["...","..."] }`;
+      const system = "Você pesquisa um negócio específico em fontes públicas e resume SOMENTE o que as fontes realmente dizem. NUNCA presuma a cidade nem invente dados. Responda SOMENTE JSON, sem markdown.";
+      const user = `Prospect: ${nome}${site ? ` — site: ${site}` : ""}${cidade ? ` — endereço/cidade informados: ${cidade}` : " — cidade não informada"}\n\nFontes encontradas:\n${sources.map((s, i) => `[${i + 1}] ${s.title} ${s.url}\n${s.text}`).join("\n\n")}\n\nRegras: use apenas o que as fontes afirmam. Se as fontes forem de outra cidade ou de outro negócio, diga isso. Se não confirmar a cidade, use "" (vazio). Nunca invente.\nResponda JSON: { "resumo": "o que o negócio é e faz", "cidade": "cidade CONFIRMADA nas fontes ou ''", "presenca_digital": "site/redes/nota", "oportunidades": ["...","..."] }`;
       try {
         const raw = await runChain(system, user);
-        const parsed = (parseJson(raw) || {}) as { resumo?: string; presenca_digital?: string; oportunidades?: string[] };
+        const parsed = (parseJson(raw) || {}) as { resumo?: string; cidade?: string; presenca_digital?: string; oportunidades?: string[] };
         const resumo = parsed.resumo || raw;
+        const cid = parsed.cidade || "";
         const presenca = parsed.presenca_digital || "";
         const oport = Array.isArray(parsed.oportunidades) ? parsed.oportunidades : [];
-        const texto = `Resumo: ${resumo}\nPresença digital: ${presenca}\nOportunidades: ${oport.join("; ")}`;
+        const texto = `${cid ? `Cidade (fontes): ${cid}\n` : "Cidade: não confirmada\n"}Resumo: ${resumo}\nPresença digital: ${presenca}\nOportunidades: ${oport.join("; ")}`;
         return new Response(
           JSON.stringify({ resumo, presenca_digital: presenca, oportunidades: oport, texto, fontes: sources.map((s) => s.url) }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -679,9 +679,14 @@ Deno.serve(async (req) => {
     const system = [
       STYLE,
       "",
-      "# SOBRE QUEM ESTÁ OFERTANDO (o usuário)",
+      "# SOBRE QUEM ESTÁ OFERTANDO (o vendedor)",
       instruction || "(não informado)",
-      prof ? `\n# PERFIL PROFISSIONAL\n${prof}` : "",
+      prof ? `\n# PERFIL PROFISSIONAL DO VENDEDOR\n${prof}` : "",
+      "",
+      "# REGRAS DE FIDELIDADE (obrigatório)",
+      "- O endereço/região do VENDEDOR é dele — NUNCA diga que o PROSPECT fica nesse lugar.",
+      "- Só afirme cidade/bairro do PROSPECT se isso estiver no endereço dele (abaixo). Se não houver, NÃO cite lugar específico do prospect (no máximo 'aqui na região', referindo-se ao vendedor).",
+      "- NUNCA invente serviços, dados ou localização do prospect. Use só o que foi informado.",
       "",
       "Responda SOMENTE com JSON válido, sem markdown:",
       '{ "ramo": "curto", "tags": ["tag1","tag2"], "mensagem": "texto pronto", "sugestoes": ["serviço 1","serviço 2"] }',

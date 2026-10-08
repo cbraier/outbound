@@ -138,9 +138,15 @@ export default function PhotoCapture({
           <ImageUp className="h-4 w-4" /> Escolher da galeria
         </button>
       )}
-      <p className={`mt-2 text-center text-[11px] ${msg.startsWith("Erro") ? "font-semibold text-red-500" : "text-brand-ink/60"}`}>
-        {busy ? "Lendo a fachada..." : msg || "A foto cria o lead automaticamente"}
-      </p>
+      {busy ? (
+        <p className="mt-2 flex items-center justify-center gap-2 text-[11px] font-semibold text-brand-ink/70">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Lendo a imagem...
+        </p>
+      ) : (
+        <p className={`mt-2 text-center text-[11px] ${msg.startsWith("Erro") ? "font-semibold text-red-500" : "text-brand-ink/60"}`}>
+          {msg || "A foto cria o lead automaticamente"}
+        </p>
+      )}
     </>
   );
 }
