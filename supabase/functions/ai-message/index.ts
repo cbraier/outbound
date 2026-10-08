@@ -56,6 +56,9 @@ interface In {
   site?: string;
   city?: string;
   region?: string;
+  radius?: number;
+  sector?: string;
+  limit?: number;
   socials?: Record<string, string>;
   instrucao?: string;
   history?: { q: string; a: string }[];
@@ -217,6 +220,69 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ ok: true, provider, sample: (out || "").slice(0, 80) }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       } catch (e) {
         return new Response(JSON.stringify({ ok: false, error: e instanceof Error ? e.message : "Falha" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
+    // Modo DISCOVER: acha negócios de um setor dentro da região (Exa/Tavily).
+    if (body.action === "discover") {
+      const sector = (body.sector || "").trim();
+      const region = body.region || "Florianópolis, São José, Palhoça, Biguaçu, Garopaba";
+      const city = body.city || "";
+      const radius = Number(body.radius) || 0;
+      const limit = Math.min(20, Math.max(3, Number(body.limit) || 12));
+      if (!sector) {
+        return new Response(JSON.stringify({ error: "Informe o setor (ex.: oficinas mecânicas)." }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const sources: { title: string; url: string; text: string }[] = [];
+      const EXA = Deno.env.get("EXA_API_KEY");
+      const TAV = Deno.env.get("TAVILY_API_KEY");
+      const q = [sector, city || region, region, radius ? `região de ${radius} km` : ""].filter(Boolean).join(" em ");
+      if (EXA) {
+        try {
+          const r = await fetchTimeout("https://api.exa.ai/search", {
+            method: "POST",
+            headers: { "x-api-key": EXA, "Content-Type": "application/json" },
+            body: JSON.stringify({ query: q, numResults: limit * 2, contents: { text: { maxCharacters: 1200 } } }),
+          }, 25000);
+          if (r.ok) {
+            const j = await r.json();
+            for (const x of (j.results || [])) sources.push({ title: x.title || "", url: x.url || "", text: x.text || "" });
+          }
+        } catch { /* ignora */ }
+      }
+      if (TAV) {
+        try {
+          const r = await fetchTimeout("https://api.tavily.com/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ api_key: TAV, query: q, max_results: Math.min(10, limit + 3), include_raw_content: false }),
+          }, 25000);
+          if (r.ok) {
+            const j = await r.json();
+            for (const x of (j.results || [])) sources.push({ title: x.title || "", url: x.url || "", text: String(x.content || "").slice(0, 800) });
+          }
+        } catch { /* ignora */ }
+      }
+      if (!sources.length) {
+        return new Response(JSON.stringify({ error: EXA || TAV ? "Nada encontrado nessa região." : "Pesquisa não configurada (sem chave Exa/Tavily)." }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const system = "Você extrai uma lista de NEGÓCIOS reais a partir de fontes públicas. Responda SOMENTE JSON, sem markdown.";
+      const user = `Setor desejado: ${sector}\nRegião: ${region}\n\nFontes:\n${sources.map((s, i) => `[${i + 1}] ${s.title} ${s.url}\n${s.text}`).join("\n\n")}\n\nListe até ${limit} negócios DIFERENTES que ficam na região informada. Ignore diretórios/listas genéricas quando possível (prefira o site do próprio negócio). Se o telefone aparecer, inclua.\nResponda JSON: { "negocios": [ { "nome": "", "site": "", "telefone": "", "cidade": "" } ] }`;
+      try {
+        const raw = await runChain(system, user);
+        const parsed = (parseJson(raw) || {}) as { negocios?: { nome?: string; site?: string; telefone?: string; cidade?: string }[] };
+        const negocios = Array.isArray(parsed.negocios) ? parsed.negocios.slice(0, limit) : [];
+        return new Response(JSON.stringify({ negocios, fontes: sources.map((s) => s.url) }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Falha na busca" }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
     }
 

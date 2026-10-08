@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { getCurrentLocation, reverseGeocode } from "@/lib/geo";
 import { socialUrl } from "@/lib/format";
 import CollapsibleCard from "@/components/CollapsibleCard";
-import { Loader2, Save, Paperclip, MapPin, X, Mic, Square, Sparkles, Copy, Send } from "lucide-react";
+import { Loader2, Save, Paperclip, MapPin, X, Mic, Square, Sparkles, Copy, Send, Search } from "lucide-react";
 
 async function blobToB64(blob: Blob): Promise<string> {
   return new Promise((res, rej) => {
@@ -128,6 +128,11 @@ export default function ProfilePage() {
   const [interviewPerfil, setInterviewPerfil] = useState("");
   const [interviewing, setInterviewing] = useState(false);
   const [interviewDone, setInterviewDone] = useState(false);
+  const [discSector, setDiscSector] = useState("");
+  const [discList, setDiscList] = useState<{ nome?: string; site?: string; telefone?: string; cidade?: string }[]>([]);
+  const [discBusy, setDiscBusy] = useState(false);
+  const [discMsg, setDiscMsg] = useState("");
+  const [discSel, setDiscSel] = useState<number[]>([]);
   const [docBusy, setDocBusy] = useState(false);
   const [docName, setDocName] = useState("");
   const docRef = useRef<HTMLInputElement>(null);
@@ -329,6 +334,48 @@ export default function ProfilePage() {
     }
   };
 
+  const buscarSetor = async () => {
+    if (!discSector.trim()) return;
+    setDiscBusy(true);
+    setDiscMsg("");
+    setDiscList([]);
+    try {
+      const { data, error } = await supabase.functions.invoke("ai-message", {
+        body: { action: "discover", sector: discSector.trim(), region: f.region, city: f.work_address || undefined, radius: f.radius_km, limit: 12 },
+      });
+      if (error) throw error;
+      if (data?.error) {
+        setDiscMsg(data.error);
+        return;
+      }
+      setDiscList(data.negocios || []);
+      setDiscSel([]);
+      if (!data.negocios?.length) setDiscMsg("Nada encontrado nessa região.");
+    } catch (e) {
+      setDiscMsg(e instanceof Error ? e.message : "Falha na busca");
+    } finally {
+      setDiscBusy(false);
+    }
+  };
+
+  const addDiscoverLead = async (n: { nome?: string; site?: string; telefone?: string; cidade?: string }) => {
+    if (!user) return;
+    const { error } = await supabase.from("leads").insert({
+      user_id: user.id,
+      nome: n.nome || "Sem nome",
+      site: n.site || null,
+      telefone: (n.telefone || "").replace(/\D/g, "") || null,
+      cidade: n.cidade || null,
+      etapa: "lead",
+      origem: "discovery",
+    } as never);
+    if (error) {
+      alert("Erro ao adicionar: " + error.message);
+      return;
+    }
+    setDiscList((l) => l.filter((x) => x !== n));
+  };
+
   const usarLocalizacao = async () => {
     const loc = await getCurrentLocation();
     if (!loc) {
@@ -454,6 +501,65 @@ export default function ProfilePage() {
               Para <b>acrescentar</b>, escreva a cidade; para <b>tirar</b>, é só apagá-la. A pesquisa na web fica <b>travada nessa região</b> (perto de você).
             </p>
           </div>
+        </div>
+      </CollapsibleCard>
+
+      <CollapsibleCard title="Descobrir negócios (por setor)" subtitle="Ache empresas da sua região por setor e jogue no funil." storageKey="descobrir">
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <input className="input" value={discSector} onChange={(e) => setDiscSector(e.target.value)} placeholder="Ex.: oficinas mecânicas" />
+            <button className="btn-primary shrink-0" onClick={buscarSetor} disabled={discBusy || !discSector.trim()}>
+              {discBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} Buscar
+            </button>
+          </div>
+          <p className="text-[10px] text-brand-ink/60">
+            Usa a sua <b>região</b> (campo Atendimento) para buscar na web. Depois é só adicionar como leads no funil.
+          </p>
+          {discMsg && <p className="text-[11px] text-brand-ink/70">{discMsg}</p>}
+          {discList.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <button
+                  className="btn-primary flex-1 !py-1.5 !text-xs"
+                  disabled={!discSel.length}
+                  onClick={async () => {
+                    const items = discSel.map((i) => discList[i]);
+                    setDiscSel([]);
+                    for (const n of items) await addDiscoverLead(n);
+                  }}
+                >
+                  Adicionar selecionados ({discSel.length})
+                </button>
+                <button
+                  className="btn-ghost flex-1 !py-1.5 !text-xs"
+                  onClick={async () => {
+                    for (const n of [...discList]) await addDiscoverLead(n);
+                  }}
+                >
+                  Adicionar todos ({discList.length})
+                </button>
+              </div>
+              {discList.map((n, i) => {
+                const sel = discSel.includes(i);
+                return (
+                  <label
+                    key={i}
+                    className={`flex items-center gap-2 rounded-xl border p-2 ${sel ? "border-brand-pink bg-brand-pink/5" : "border-brand-purple/15 bg-white/60"}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={sel}
+                      onChange={() => setDiscSel((s) => (sel ? s.filter((x) => x !== i) : [...s, i]))}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold text-brand-deep">{n.nome}</p>
+                      <p className="truncate text-[11px] text-brand-ink/50">{[n.cidade, n.site].filter(Boolean).join(" · ")}</p>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          )}
         </div>
       </CollapsibleCard>
 
