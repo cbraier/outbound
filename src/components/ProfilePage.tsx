@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { getCurrentLocation, reverseGeocode } from "@/lib/geo";
 import { socialUrl } from "@/lib/format";
-import { Loader2, Save, Paperclip, MapPin, X, Mic, Square } from "lucide-react";
+import { Loader2, Save, Paperclip, MapPin, X, Mic, Square, Sparkles } from "lucide-react";
 
 async function blobToB64(blob: Blob): Promise<string> {
   return new Promise((res, rej) => {
@@ -114,6 +114,13 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testMsg, setTestMsg] = useState("");
+  const [researchConsent, setResearchConsent] = useState(false);
+  const [researching, setResearching] = useState(false);
+  const [researchDraft, setResearchDraft] = useState("");
+  const [researchQs, setResearchQs] = useState<string[]>([]);
+  const [answers, setAnswers] = useState("");
   const [docBusy, setDocBusy] = useState(false);
   const [docName, setDocName] = useState("");
   const docRef = useRef<HTMLInputElement>(null);
@@ -127,6 +134,7 @@ export default function ProfilePage() {
     followup_message: FOLLOWUP_PADRAO,
     ai_provider: "default",
     ai_api_key: "",
+    ai_keys: {} as Record<string, string>,
     work_address: "",
     radius_km: 15,
     resume_text: "",
@@ -152,13 +160,15 @@ export default function ProfilePage() {
             fixed_message: data.fixed_message || "",
             followup_message: data.followup_message || FOLLOWUP_PADRAO,
             ai_provider: data.ai_provider || "default",
-            ai_api_key: data.ai_api_key || "",
+            ai_api_key: ((data.ai_keys as Record<string, string>) || {})[data.ai_provider || "default"] || data.ai_api_key || "",
+            ai_keys: (data.ai_keys as Record<string, string>) || {},
             work_address: data.work_address || "",
             radius_km: data.radius_km ?? 15,
             resume_text: data.resume_text || "",
             resume_url: data.resume_url || "",
             socials: (data.socials as Record<string, string>) || {},
           });
+          setResearchConsent(!!data.research_consent);
         }
         setLoading(false);
       });
@@ -206,6 +216,52 @@ export default function ProfilePage() {
     setTimeout(() => setSaved(false), 2000);
   };
 
+  const testarIA = async () => {
+    setTesting(true);
+    setTestMsg("");
+    try {
+      const { data, error } = await supabase.functions.invoke("ai-message", {
+        body: { action: "test", provider: f.ai_provider, api_key: f.ai_api_key || undefined },
+      });
+      if (error) throw error;
+      if (data?.ok) setTestMsg(`✓ Funcionou (${data.provider}). Resposta: "${data.sample}"`);
+      else setTestMsg(`✗ ${data?.error || "Falhou"}`);
+    } catch (e) {
+      setTestMsg(`✗ ${e instanceof Error ? e.message : "Falhou"}`);
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const pesquisar = async () => {
+    if (!user) return;
+    if (!researchConsent) {
+      alert("Marque o consentimento para a pesquisa (LGPD).");
+      return;
+    }
+    setResearching(true);
+    setResearchDraft("");
+    setResearchQs([]);
+    try {
+      const { data, error } = await supabase.functions.invoke("ai-message", {
+        body: { action: "research", nome: f.nome, company: f.company, site: f.site, socials: f.socials, instrucao: f.ai_instruction },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      setResearchDraft(data.perfil || "");
+      setResearchQs(Array.isArray(data.perguntas) ? data.perguntas : []);
+      await supabase.from("profiles").update({
+        research_consent: true,
+        research_at: new Date().toISOString(),
+        research_sources: { siteRead: data.siteRead || 0 },
+      } as never).eq("user_id", user.id);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Falha na pesquisa");
+    } finally {
+      setResearching(false);
+    }
+  };
+
   const usarLocalizacao = async () => {
     const loc = await getCurrentLocation();
     if (!loc) {
@@ -231,6 +287,7 @@ export default function ProfilePage() {
       await supabase.storage.from("profile_docs").upload(path, file, { upsert: true, contentType: file.type });
       const { data } = supabase.storage.from("profile_docs").getPublicUrl(path);
       setF((p) => ({ ...p, resume_text: texto, resume_url: data.publicUrl }));
+      alert(`Documento lido com sucesso: ${texto.length} caracteres.\n\nEsse texto passa a ser usado nas abordagens (aparece na prévia abaixo).`);
     } catch (e) {
       alert(e instanceof Error ? e.message : "Falha ao ler o documento.");
       setDocName("");
@@ -323,12 +380,21 @@ export default function ProfilePage() {
         <button className="btn-ghost w-full" onClick={() => docRef.current?.click()} disabled={docBusy}>
           {docBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />} {docBusy ? "Lendo..." : "Anexar documento (PDF/DOCX)"}
         </button>
-        {(docName || f.resume_text) && (
-          <div className="mt-2 flex items-center gap-2 text-[11px] text-brand-ink/60">
-            <span className="truncate">{docName || "documento anexado"} · {f.resume_text.length} caracteres</span>
-            <button onClick={() => { setF((p) => ({ ...p, resume_text: "", resume_url: "" })); setDocName(""); }} className="rounded-full p-1 hover:bg-black/5"><X className="h-3 w-3" /></button>
+        {f.resume_text ? (
+          <div className="mt-3 rounded-xl border border-brand-money/40 bg-brand-money/5 p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-brand-deep">
+                ✓ Documento lido: {f.resume_text.length} caracteres (usado nas abordagens)
+              </span>
+              <button onClick={() => { setF((p) => ({ ...p, resume_text: "", resume_url: "" })); setDocName(""); }} className="rounded-full p-1 hover:bg-black/5"><X className="h-3 w-3" /></button>
+            </div>
+            <p className="mt-1 max-h-24 overflow-y-auto whitespace-pre-wrap text-[11px] text-brand-ink/70">
+              {f.resume_text.slice(0, 400)}{f.resume_text.length > 400 ? "…" : ""}
+            </p>
           </div>
-        )}
+        ) : docName ? (
+          <p className="mt-2 text-[11px] text-brand-ink/60">{docName}</p>
+        ) : null}
       </div>
 
       <div className="card p-5">
@@ -346,20 +412,74 @@ export default function ProfilePage() {
       </div>
 
       <div className="card p-5">
+        <h2 className="text-lg font-extrabold text-brand-deep">Conhecer meu perfil</h2>
+        <p className="mb-2 text-xs text-brand-ink/60">O app lê o seu site/redes públicas para montar o seu perfil e sugerir o que falta.</p>
+        <label className="flex items-start gap-2 text-[11px] text-brand-ink/70">
+          <input type="checkbox" checked={researchConsent} onChange={(e) => setResearchConsent(e.target.checked)} className="mt-0.5" />
+          Autorizo a busca de informações públicas sobre meu perfil (meu site/redes), conforme a Política de Privacidade (LGPD).
+        </label>
+        <button className="btn-primary mt-3 w-full" onClick={pesquisar} disabled={researching || !researchConsent}>
+          {researching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Pesquisar meu perfil
+        </button>
+        {researchDraft && (
+          <div className="mt-3 space-y-2">
+            <span className="label">Perfil sugerido (revise e edite)</span>
+            <textarea className="input min-h-[140px]" value={researchDraft} onChange={(e) => setResearchDraft(e.target.value)} />
+            <button className="btn-ghost w-full" onClick={() => setF((p) => ({ ...p, professional_profile: researchDraft }))}>Usar este perfil</button>
+          </div>
+        )}
+        {researchQs.length > 0 && (
+          <div className="mt-3 space-y-2">
+            <span className="label">Perguntas para completar</span>
+            <ul className="list-disc pl-5 text-[11px] text-brand-ink/70">
+              {researchQs.map((q, i) => <li key={i}>{q}</li>)}
+            </ul>
+            <textarea className="input min-h-[90px]" value={answers} onChange={(e) => setAnswers(e.target.value)} placeholder="Responda aqui para enriquecer seu perfil..." />
+            <button
+              className="btn-ghost w-full"
+              onClick={() => {
+                setF((p) => ({ ...p, ai_instruction: (p.ai_instruction ? p.ai_instruction + "\n" : "") + answers }));
+                setAnswers("");
+                alert("Respostas adicionadas às suas informações.");
+              }}
+            >
+              Adicionar respostas
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="card p-5">
         <h2 className="text-lg font-extrabold text-brand-deep">Elaboração de mensagens</h2>
         <div className="space-y-3">
           <div>
             <span className="label">Provedor</span>
-            <select className="input" value={f.ai_provider} onChange={(e) => setF({ ...f, ai_provider: e.target.value })}>
+            <select
+              className="input"
+              value={f.ai_provider}
+              onChange={(e) => {
+                const p = e.target.value;
+                setF((prev) => ({ ...prev, ai_provider: p, ai_api_key: prev.ai_keys[p] || "" }));
+              }}
+            >
               {PROVIDERS.map((p) => <option key={p.v} value={p.v}>{p.label}</option>)}
             </select>
           </div>
           {f.ai_provider !== "default" && (
             <div>
-              <span className="label">Sua API key ({f.ai_provider})</span>
-              <input className="input" value={f.ai_api_key} onChange={(e) => setF({ ...f, ai_api_key: e.target.value })} placeholder="cole sua chave" />
+              <span className="label">Sua API key ({f.ai_provider}) — cada provedor guarda a sua</span>
+              <input
+                className="input"
+                value={f.ai_api_key}
+                onChange={(e) => setF((prev) => ({ ...prev, ai_api_key: e.target.value, ai_keys: { ...prev.ai_keys, [prev.ai_provider]: e.target.value } }))}
+                placeholder="cole sua chave"
+              />
             </div>
           )}
+          <button type="button" className="btn-ghost w-full" onClick={testarIA} disabled={testing}>
+            {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Testar conexão
+          </button>
+          {testMsg && <p className="text-[11px] font-medium text-brand-ink/80">{testMsg}</p>}
         </div>
       </div>
 

@@ -32,6 +32,37 @@ interface In {
   audio_base64?: string;
   audio_mime?: string;
   action?: string;
+  nome?: string;
+  company?: string;
+  site?: string;
+  socials?: Record<string, string>;
+  instrucao?: string;
+}
+
+function stripHtml(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&[a-z]+;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function runChain(system: string, user: string): Promise<string> {
+  const errs: string[] = [];
+  const chain: Array<[string | undefined, () => Promise<string>]> = [
+    [Deno.env.get("GEMINI_API_KEY"), () => callGemini(Deno.env.get("GEMINI_API_KEY")!, system, user)],
+    [Deno.env.get("OPENAI_API_KEY"), () => callOpenAI(Deno.env.get("OPENAI_API_KEY")!, system, user)],
+    [Deno.env.get("ANTHROPIC_API_KEY"), () => callAnthropic(Deno.env.get("ANTHROPIC_API_KEY")!, system, user)],
+    [Deno.env.get("DEEPSEEK_API_KEY"), () => callDeepSeek(Deno.env.get("DEEPSEEK_API_KEY")!, system, user)],
+  ];
+  for (const [k, fn] of chain) {
+    if (!k) continue;
+    try { return await fn(); } catch (e) { errs.push(String(e)); }
+  }
+  throw new Error(errs.join(" | ") || "Nenhum provedor configurado.");
 }
 
 function mimeFromB64(b64: string): string {
@@ -132,6 +163,40 @@ Deno.serve(async (req) => {
 
     const body = (await req.json().catch(() => ({}))) as In;
 
+    // Modo TESTE: valida o provedor/chave e devolve feedback.
+    if (body.action === "test") {
+      const provider = (body.provider || "default").toLowerCase();
+      const byo = (body.api_key || "").trim();
+      const sys = "Você é um teste. Responda apenas: ok";
+      const usr = "Diga apenas: ok";
+      try {
+        let out = "";
+        if (provider !== "default" && byo) {
+          if (provider === "gemini") out = await callGemini(byo, sys, usr);
+          else if (provider === "openai") out = await callOpenAI(byo, sys, usr);
+          else if (provider === "anthropic") out = await callAnthropic(byo, sys, usr);
+          else if (provider === "deepseek") out = await callDeepSeek(byo, sys, usr);
+          else return new Response(JSON.stringify({ ok: false, error: "Provedor inválido." }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } else {
+          const chain: Array<[string | undefined, () => Promise<string>]> = [
+            [Deno.env.get("GEMINI_API_KEY"), () => callGemini(Deno.env.get("GEMINI_API_KEY")!, sys, usr)],
+            [Deno.env.get("OPENAI_API_KEY"), () => callOpenAI(Deno.env.get("OPENAI_API_KEY")!, sys, usr)],
+            [Deno.env.get("ANTHROPIC_API_KEY"), () => callAnthropic(Deno.env.get("ANTHROPIC_API_KEY")!, sys, usr)],
+            [Deno.env.get("DEEPSEEK_API_KEY"), () => callDeepSeek(Deno.env.get("DEEPSEEK_API_KEY")!, sys, usr)],
+          ];
+          const errs: string[] = [];
+          for (const [k, fn] of chain) {
+            if (!k) continue;
+            try { out = await fn(); break; } catch (e) { errs.push(String(e)); }
+          }
+          if (!out) return new Response(JSON.stringify({ ok: false, error: errs.join(" | ") || "Nenhum provedor padrão configurado." }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        return new Response(JSON.stringify({ ok: true, provider, sample: (out || "").slice(0, 80) }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      } catch (e) {
+        return new Response(JSON.stringify({ ok: false, error: e instanceof Error ? e.message : "Falha" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
     // Modo VISÃO: extrai os dados do estabelecimento a partir da foto.
     if (typeof body.image_base64 === "string" && body.image_base64) {
       const errs: string[] = [];
@@ -205,6 +270,39 @@ Deno.serve(async (req) => {
         JSON.stringify({ extracted, transcript, error: extracted ? undefined : errs.join(" | ") || "Falha ao extrair" }),
         { status: extracted ? 200 : 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
+    }
+
+    // Modo PESQUISA: lê o site do usuário e monta o perfil profissional + perguntas.
+    if (body.action === "research") {
+      let siteText = "";
+      if (body.site) {
+        try {
+          const u = /^https?:\/\//i.test(body.site) ? body.site : `https://${body.site}`;
+          const ctrl = new AbortController();
+          const to = setTimeout(() => ctrl.abort(), 8000);
+          const r = await fetch(u, { headers: { "User-Agent": "OutboundSales/1.0 (contato@zonn.com.br)" }, signal: ctrl.signal });
+          clearTimeout(to);
+          const html = await r.text();
+          siteText = stripHtml(html).slice(0, 4000);
+        } catch { /* ignora */ }
+      }
+      const system = "Você ajuda a montar o perfil profissional de um vendedor, para personalizar prospecções. Responda SOMENTE JSON, sem markdown.";
+      const user = `Nome: ${body.nome || "-"}\nEmpresa: ${body.company || "-"}\nSite: ${body.site || "-"}\nRedes: ${JSON.stringify(body.socials || {})}\nO que a pessoa disse de si: ${body.instrucao || "-"}\n\nConteúdo do site (pode estar vazio): ${siteText}\n\nMonte um PERFIL PROFISSIONAL (o que faz, para quem, diferenciais, tom de voz), liste servicos e faça de 3 a 6 PERGUNTAS para completar o que falta (serviços, preços, região, formas de pagamento...).\nResponda JSON: { "perfil": "texto", "servicos": ["..."], "perguntas": ["..."] }`;
+      try {
+        const raw = await runChain(system, user);
+        let parsed: { perfil?: string; servicos?: string[]; perguntas?: string[] } | null = null;
+        try { parsed = JSON.parse(raw.replace(/```json?\n?/g, "").replace(/```/g, "").trim()); } catch { parsed = null; }
+        return new Response(JSON.stringify({
+          perfil: parsed?.perfil || raw,
+          servicos: parsed?.servicos || [],
+          perguntas: parsed?.perguntas || [],
+          siteRead: siteText.length,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Falha na pesquisa" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     const lead = body.lead || {};

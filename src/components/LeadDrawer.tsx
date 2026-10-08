@@ -21,6 +21,7 @@ export default function LeadDrawer({
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [zoom, setZoom] = useState(false);
+  const [iaInfo, setIaInfo] = useState("");
 
   useEffect(() => setL(lead), [lead]);
 
@@ -28,6 +29,7 @@ export default function LeadDrawer({
 
   const gerarIA = async () => {
     setBusy(true);
+    setIaInfo("");
     try {
       const { data, error } = await supabase.functions.invoke("ai-message", {
         body: {
@@ -45,6 +47,7 @@ export default function LeadDrawer({
       setMsg(texto);
       const tags = Array.isArray(data?.tags) ? Array.from(new Set([...(l.tags || []), ...(data.tags as string[])])) : l.tags;
       upd({ mensagem: texto, tags });
+      setIaInfo("✓ Mensagem elaborada. Revise e envie.");
     } catch (e) {
       alert(e instanceof Error ? e.message : "Falha ao gerar");
     } finally {
@@ -203,6 +206,7 @@ export default function LeadDrawer({
             </div>
           </div>
           <textarea className="input min-h-[180px] font-mono text-xs" value={msg} onChange={(e) => setMsg(e.target.value)} placeholder="Toque em Elaborar ou escreva a abordagem..." />
+          {iaInfo && <p className="mt-1 text-[11px] font-semibold text-brand-money">{iaInfo}</p>}
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
