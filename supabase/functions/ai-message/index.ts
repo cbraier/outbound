@@ -55,6 +55,7 @@ interface In {
   company?: string;
   site?: string;
   city?: string;
+  region?: string;
   socials?: Record<string, string>;
   instrucao?: string;
   history?: { q: string; a: string }[];
@@ -224,12 +225,13 @@ Deno.serve(async (req) => {
       const nome = body.nome || "";
       const site = body.site || "";
       const cidade = body.city || "";
+      const region = body.region || "Florianópolis, São José, Palhoça, Biguaçu, Garopaba";
       const sources: { title: string; url: string; text: string }[] = [];
       const EXA = Deno.env.get("EXA_API_KEY");
       const TAV = Deno.env.get("TAVILY_API_KEY");
       if (EXA) {
         try {
-          const q = [nome, cidade, "site oficial instagram facebook contato"].filter(Boolean).join(" ");
+          const q = [nome, cidade || region, region, "site oficial instagram facebook contato"].filter(Boolean).join(" ");
           const r = await fetchTimeout("https://api.exa.ai/search", {
             method: "POST",
             headers: { "x-api-key": EXA, "Content-Type": "application/json" },
@@ -243,7 +245,7 @@ Deno.serve(async (req) => {
       }
       if (TAV) {
         try {
-          const q = [nome, cidade].filter(Boolean).join(" ");
+          const q = [nome, cidade || region, region].filter(Boolean).join(" ");
           const r = await fetchTimeout("https://api.tavily.com/search", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -261,7 +263,7 @@ Deno.serve(async (req) => {
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
-      const system = "Você analisa um prospect a partir de fontes públicas da web e ajuda um vendedor a ofertar serviços de prospecção/tecnologia. Responda SOMENTE JSON, sem markdown.";
+      const system = `Você analisa um prospect a partir de fontes públicas da web e ajuda um vendedor a ofertar serviços de prospecção/tecnologia.\nIMPORTANTE: considere SOMENTE negócios/fontes da região: ${region}. Desconsidere o que for de outras cidades; se não houver nada da região, diga isso. Responda SOMENTE JSON, sem markdown.`;
       const user = `Prospect: ${nome}${site ? ` — site: ${site}` : ""}${cidade ? ` — ${cidade}` : ""}\n\nFontes encontradas:\n${sources.map((s, i) => `[${i + 1}] ${s.title} ${s.url}\n${s.text}`).join("\n\n")}\n\nResponda JSON: { "resumo": "o que o negócio é e faz", "presenca_digital": "site/redes/nota", "oportunidades": ["...","..."] }`;
       try {
         const raw = await runChain(system, user);

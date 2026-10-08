@@ -28,6 +28,7 @@ interface ProfileRow {
   radius_km?: number | null;
   resume_text?: string | null;
   full_access?: boolean | null;
+  region?: string | null;
 }
 
 function contextoDePerfil(p: ProfileRow): string | null {

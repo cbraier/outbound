@@ -143,6 +143,7 @@ export default function ProfilePage() {
     ai_keys: {} as Record<string, string>,
     work_address: "",
     radius_km: 15,
+    region: "",
     resume_text: "",
     resume_url: "",
     socials: {} as Record<string, string>,
@@ -170,6 +171,7 @@ export default function ProfilePage() {
             ai_keys: (data.ai_keys as Record<string, string>) || {},
             work_address: data.work_address || "",
             radius_km: data.radius_km ?? 15,
+            region: data.region || "Florianópolis, São José, Palhoça, Biguaçu, Garopaba",
             resume_text: data.resume_text || "",
             resume_url: data.resume_url || "",
             socials: (data.socials as Record<string, string>) || {},
@@ -197,13 +199,14 @@ export default function ProfilePage() {
         site: withHttps(f.site),
         work_address: f.work_address,
         radius_km: Number(f.radius_km) || 15,
+        region: f.region,
         ai_provider: f.ai_provider,
         ai_api_key: f.ai_api_key,
         ai_keys: f.ai_keys,
       } as never, { onConflict: "user_id" });
     }, 1500);
     return () => window.clearTimeout(t);
-  }, [f.ai_instruction, f.professional_profile, f.fixed_message, f.followup_message, f.socials, f.site, f.work_address, f.radius_km, f.ai_provider, f.ai_api_key, f.ai_keys]);
+  }, [f.ai_instruction, f.professional_profile, f.fixed_message, f.followup_message, f.socials, f.site, f.work_address, f.radius_km, f.region, f.ai_provider, f.ai_api_key, f.ai_keys]);
 
   const salvar = async () => {
     if (!user) return;
@@ -449,6 +452,11 @@ export default function ProfilePage() {
           <div>
             <span className="label">Raio de atendimento: {f.radius_km} km</span>
             <input type="range" min={1} max={100} value={f.radius_km} onChange={(e) => setF({ ...f, radius_km: Number(e.target.value) })} className="w-full accent-brand-pink" />
+          </div>
+          <div>
+            <span className="label">Região / cidades de atendimento</span>
+            <input className="input" value={f.region} onChange={(e) => setF({ ...f, region: e.target.value })} placeholder="Florianópolis, São José, Palhoça, Biguaçu, Garopaba" />
+            <p className="mt-1 text-[10px] text-brand-ink/50">A pesquisa na web fica travada nessa região — estratégia de crescimento em espiral, perto de você.</p>
           </div>
         </div>
       </div>

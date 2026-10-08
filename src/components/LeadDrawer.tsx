@@ -21,7 +21,7 @@ export default function LeadDrawer({
   onGoToAgenda,
 }: {
   lead: Lead;
-  profile: { ai_instruction: string | null; professional_profile: string | null; fixed_message: string | null; followup_message?: string | null; ai_provider: string | null; ai_api_key: string | null; site: string | null };
+  profile: { ai_instruction: string | null; professional_profile: string | null; fixed_message: string | null; followup_message?: string | null; ai_provider: string | null; ai_api_key: string | null; site: string | null; region?: string | null };
   onClose: () => void;
   onSaved: () => void;
   onGoToAgenda?: (d?: Date) => void;
@@ -45,7 +45,7 @@ export default function LeadDrawer({
     setWebInfo("");
     try {
       const { data, error } = await supabase.functions.invoke("ai-message", {
-        body: { action: "enrich", nome: l.nome, site: l.site || undefined, city: l.cidade || undefined },
+        body: { action: "enrich", nome: l.nome, site: l.site || undefined, city: l.cidade || undefined, region: profile.region || undefined },
       });
       if (error) throw error;
       if (data?.error) {
