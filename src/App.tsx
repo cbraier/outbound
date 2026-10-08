@@ -4,7 +4,8 @@ import { supabase } from "@/lib/supabase";
 import { type Lead } from "@/lib/types";
 import Board from "@/components/Board";
 import ProfilePage from "@/components/ProfilePage";
-import PhotoCapture, { type CapturedLead } from "@/components/PhotoCapture";
+import NovoLead from "@/components/NovoLead";
+import { type CapturedLead } from "@/components/PhotoCapture";
 import { LayoutGrid, User, LogOut, Plus } from "lucide-react";
 
 interface ProfileRow {
@@ -24,13 +25,22 @@ function AuthScreen() {
   const [nome, setNome] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [info, setInfo] = useState("");
 
   const submit = async () => {
     setBusy(true);
     setErr("");
-    const res = mode === "in" ? await signIn(email, password) : await signUp(email, password, nome);
-    setBusy(false);
-    if (res.error) setErr(res.error);
+    setInfo("");
+    try {
+      const res = mode === "in" ? await signIn(email, password) : await signUp(email, password, nome);
+      if (res.error) setErr(res.error);
+      else if ("needsConfirm" in res && res.needsConfirm)
+        setInfo(`Enviamos um e-mail de confirmação para ${email}. Confirme e depois toque em "Entrar".`);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Erro inesperado.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -44,6 +54,7 @@ function AuthScreen() {
           <div><span className="label">Senha</span><input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></div>
         </div>
         {err && <p className="mt-2 text-xs text-red-500">{err}</p>}
+        {info && <p className="mt-2 text-xs font-semibold text-brand-ink">{info}</p>}
         <button className="btn-primary mt-4 w-full" onClick={submit} disabled={busy || !email || !password}>
           {busy ? "..." : mode === "in" ? "Entrar" : "Criar conta"}
         </button>
@@ -57,7 +68,7 @@ function AuthScreen() {
 
 function Shell() {
   const { user, loading, signOut } = useAuth();
-  const [tab, setTab] = useState<"board" | "perfil">("board");
+  const [tab, setTab] = useState<"novo" | "board" | "perfil">("novo");
   const [leads, setLeads] = useState<Lead[]>([]);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
 
@@ -68,7 +79,13 @@ function Shell() {
       supabase.from("profiles").select("*").eq("user_id", user.id).maybeSingle(),
     ]);
     setLeads((ls as Lead[]) || []);
-    setProfile((pf as ProfileRow) || { ai_instruction: null, professional_profile: null, fixed_message: null, ai_provider: null, ai_api_key: null, site: null });
+    let prof = pf as ProfileRow | null;
+    if (!prof) {
+      const nome = (user.user_metadata?.nome as string) || null;
+      await supabase.from("profiles").upsert({ user_id: user.id, email: user.email, nome }, { onConflict: "user_id" });
+      prof = { ai_instruction: null, professional_profile: null, fixed_message: null, ai_provider: null, ai_api_key: null, site: null };
+    }
+    setProfile(prof);
   }, [user?.id]);
 
   useEffect(() => {
@@ -111,19 +128,15 @@ function Shell() {
       </header>
 
       <main className="p-4">
-        {tab === "board" ? (
-          <>
-            <div className="mx-auto mb-4 max-w-md">
-              <PhotoCapture userId={user.id} onCaptured={onCaptured} />
-            </div>
-            <Board leads={leads} profile={profile} onRefresh={load} />
-          </>
-        ) : (
-          <ProfilePage />
-        )}
+        {tab === "novo" && <NovoLead userId={user.id} onCaptured={onCaptured} />}
+        {tab === "board" && <Board leads={leads} profile={profile} onRefresh={load} />}
+        {tab === "perfil" && <ProfilePage />}
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 z-30 mx-auto flex max-w-md items-center justify-around border-t border-brand-pink/10 bg-white/85 py-2 backdrop-blur">
+        <button onClick={() => setTab("novo")} className={`flex flex-col items-center gap-0.5 px-6 text-[11px] font-bold ${tab === "novo" ? "text-brand-pink" : "text-brand-ink/40"}`}>
+          <Plus className="h-5 w-5" /> Novo
+        </button>
         <button onClick={() => setTab("board")} className={`flex flex-col items-center gap-0.5 px-6 text-[11px] font-bold ${tab === "board" ? "text-brand-pink" : "text-brand-ink/40"}`}>
           <LayoutGrid className="h-5 w-5" /> Funil
         </button>

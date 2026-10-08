@@ -29,6 +29,8 @@ interface In {
   provider?: string;
   api_key?: string;
   image_base64?: string;
+  audio_base64?: string;
+  audio_mime?: string;
   action?: string;
 }
 
@@ -142,6 +144,54 @@ Deno.serve(async (req) => {
       try { extracted = JSON.parse(raw.replace(/```json?\n?/g, "").replace(/```/g, "").trim()); } catch { extracted = null; }
       return new Response(
         JSON.stringify({ extracted, raw: extracted ? undefined : raw.slice(0, 400), error: extracted ? undefined : errs.join(" | ") || "Falha ao ler a foto" }),
+        { status: extracted ? 200 : 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // Modo ÁUDIO: transcreve (Whisper) e extrai os dados do estabelecimento.
+    if (typeof body.audio_base64 === "string" && body.audio_base64) {
+      const oKey = Deno.env.get("OPENAI_API_KEY");
+      let transcript = "";
+      if (oKey) {
+        try {
+          const bin = Uint8Array.from(atob(body.audio_base64), (c) => c.charCodeAt(0));
+          const mime = body.audio_mime || "audio/webm";
+          const ext = mime.includes("mp4") ? "mp4" : mime.includes("wav") ? "wav" : "webm";
+          const fd = new FormData();
+          fd.append("file", new Blob([bin], { type: mime }), `audio.${ext}`);
+          fd.append("model", "whisper-1");
+          fd.append("language", "pt");
+          const r = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${oKey}` },
+            body: fd,
+          });
+          const j = await r.json().catch(() => ({}));
+          transcript = (j?.text || "").trim();
+        } catch {
+          transcript = "";
+        }
+      }
+      if (!transcript) {
+        return new Response(JSON.stringify({ error: "Não consegui transcrever o áudio." }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const prompt = `Um vendedor ditou os dados de um estabelecimento para cadastro.\nTexto ditado:\n"${transcript}"\n\nExtraia SOMENTE JSON: { "nome","celular","telefone","rede_social","site","endereco","bairro","cidade","estado","cep","categoria","tags":[] }`;
+      let raw = "";
+      const errs: string[] = [];
+      const chain: Array<[string | undefined, () => Promise<string>]> = [
+        [Deno.env.get("GEMINI_API_KEY"), () => callGemini(Deno.env.get("GEMINI_API_KEY")!, EXTRACT_PROMPT, prompt)],
+        [Deno.env.get("OPENAI_API_KEY"), () => callOpenAI(Deno.env.get("OPENAI_API_KEY")!, EXTRACT_PROMPT, prompt)],
+      ];
+      for (const [k, fn] of chain) {
+        if (!k) continue;
+        try { raw = await fn(); break; } catch (e) { errs.push(String(e)); }
+      }
+      let extracted: Record<string, unknown> | null = null;
+      try { extracted = JSON.parse(raw.replace(/```json?\n?/g, "").replace(/```/g, "").trim()); } catch { extracted = null; }
+      return new Response(
+        JSON.stringify({ extracted, transcript, error: extracted ? undefined : errs.join(" | ") || "Falha ao extrair" }),
         { status: extracted ? 200 : 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }

@@ -7,7 +7,7 @@ interface AuthCtx {
   user: User | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
-  signUp: (email: string, password: string, nome: string) => Promise<{ error: string | null }>;
+  signUp: (email: string, password: string, nome: string) => Promise<{ error: string | null; needsConfirm?: boolean }>;
   signOut: () => Promise<void>;
 }
 
@@ -37,12 +37,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signUp: AuthCtx["signUp"] = async (email, password, nome) => {
-    const { data, error } = await supabase.auth.signUp({ email, password });
-    if (error) return { error: error.message };
-    if (data.user) {
-      await supabase.from("profiles").upsert({ user_id: data.user.id, email, nome }, { onConflict: "user_id" });
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { nome } },
+      });
+      if (error) return { error: error.message };
+      // Sem sessão = precisa confirmar o e-mail antes de entrar.
+      return { error: null, needsConfirm: !data.session };
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : "Não foi possível criar a conta." };
     }
-    return { error: null };
   };
 
   const signOut = async () => {

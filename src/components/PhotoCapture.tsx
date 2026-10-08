@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type ChangeEvent } from "react";
 import { supabase } from "@/lib/supabase";
 import { getCurrentLocation, getPhotoLocation, reverseGeocode, uploadLeadPhoto, type GeoAddress } from "@/lib/geo";
 import { Camera, ImageUp, Loader2 } from "lucide-react";
@@ -57,6 +57,7 @@ export default function PhotoCapture({
   onCaptured: (lead: CapturedLead) => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const camRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const enviar = async (base64: string, mime: string) => {
@@ -100,30 +101,30 @@ export default function PhotoCapture({
     }
   };
 
+  const onPick = (e: ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (f) {
+      const r = new FileReader();
+      r.onload = () => enviar(String(r.result).split(",")[1] || "", f.type || "image/jpeg");
+      r.readAsDataURL(f);
+    }
+    e.currentTarget.value = "";
+  };
+
   return (
     <>
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        hidden
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) {
-            const r = new FileReader();
-            r.onload = () => enviar(String(r.result).split(",")[1] || "", f.type || "image/jpeg");
-            r.readAsDataURL(f);
-          }
-          e.currentTarget.value = "";
-        }}
-      />
-      <button className="btn-primary w-full" onClick={() => fileRef.current?.click()} disabled={busy}>
-        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
-        {busy ? "Lendo a fachada..." : "Tirar foto do estabelecimento"}
-      </button>
-      <p className="mt-2 flex items-center justify-center gap-1 text-[11px] text-brand-ink/50">
-        <ImageUp className="h-3 w-3" /> A foto cria o lead automaticamente
+      <input ref={camRef} type="file" accept="image/*" capture="environment" hidden onChange={onPick} />
+      <input ref={fileRef} type="file" accept="image/*" hidden onChange={onPick} />
+      <div className="flex gap-2">
+        <button className="btn-primary flex-1" onClick={() => camRef.current?.click()} disabled={busy}>
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />} Câmera
+        </button>
+        <button className="btn-ghost flex-1" onClick={() => fileRef.current?.click()} disabled={busy}>
+          <ImageUp className="h-4 w-4" /> Arquivo
+        </button>
+      </div>
+      <p className="mt-2 text-center text-[11px] text-brand-ink/50">
+        {busy ? "Lendo a fachada..." : "A foto cria o lead automaticamente"}
       </p>
     </>
   );
