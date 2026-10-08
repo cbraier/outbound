@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { getCurrentLocation, reverseGeocode } from "@/lib/geo";
 import { socialUrl } from "@/lib/format";
-import { Loader2, Save, Paperclip, MapPin, X, Mic, Square, Sparkles, Copy } from "lucide-react";
+import { Loader2, Save, Paperclip, MapPin, X, Mic, Square, Sparkles, Copy, Send } from "lucide-react";
 
 async function blobToB64(blob: Blob): Promise<string> {
   return new Promise((res, rej) => {
@@ -121,6 +121,12 @@ export default function ProfilePage() {
   const [researchDraft, setResearchDraft] = useState("");
   const [researchQs, setResearchQs] = useState<string[]>([]);
   const [answers, setAnswers] = useState("");
+  const [interviewLog, setInterviewLog] = useState<{ q: string; a: string }[]>([]);
+  const [interviewQ, setInterviewQ] = useState("");
+  const [interviewA, setInterviewA] = useState("");
+  const [interviewPerfil, setInterviewPerfil] = useState("");
+  const [interviewing, setInterviewing] = useState(false);
+  const [interviewDone, setInterviewDone] = useState(false);
   const [docBusy, setDocBusy] = useState(false);
   const [docName, setDocName] = useState("");
   const docRef = useRef<HTMLInputElement>(null);
@@ -262,6 +268,50 @@ export default function ProfilePage() {
       alert(e instanceof Error ? e.message : "Falha na pesquisa");
     } finally {
       setResearching(false);
+    }
+  };
+
+  const chamarEntrevista = async (log: { q: string; a: string }[]) => {
+    const { data, error } = await supabase.functions.invoke("ai-message", {
+      body: {
+        action: "interview",
+        history: log,
+        context: { nome: f.nome, company: f.company, site: f.site, trabalho: f.ai_instruction, perfil: f.professional_profile },
+      },
+    });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+    setInterviewPerfil(data.perfil || "");
+    setInterviewQ(data.pergunta || "");
+    setInterviewDone(!!data.pronto);
+  };
+
+  const iniciarEntrevista = async () => {
+    setInterviewing(true);
+    setInterviewLog([]);
+    setInterviewA("");
+    setInterviewDone(false);
+    try {
+      await chamarEntrevista([]);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Falha na entrevista");
+    } finally {
+      setInterviewing(false);
+    }
+  };
+
+  const responderEntrevista = async () => {
+    if (!interviewA.trim()) return;
+    const log = [...interviewLog, { q: interviewQ, a: interviewA.trim() }];
+    setInterviewLog(log);
+    setInterviewA("");
+    setInterviewing(true);
+    try {
+      await chamarEntrevista(log);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Falha na entrevista");
+    } finally {
+      setInterviewing(false);
     }
   };
 
@@ -429,6 +479,55 @@ export default function ProfilePage() {
             <textarea className="input min-h-[150px]" value={f.followup_message} onChange={(e) => setF({ ...f, followup_message: e.target.value })} />
           </div>
         </div>
+      </div>
+
+      <div className="card p-5">
+        <h2 className="text-lg font-extrabold text-brand-deep">Entrevista com o app</h2>
+        <p className="mb-3 text-xs text-brand-ink/60">
+          O app te entrevista para entender o seu negócio e o que você vende — responda por texto ou voz (🎤). É assim que ele aprende a prospectar por você (vendas porta a porta e WhatsApp a WhatsApp).
+        </p>
+
+        {interviewLog.length === 0 && !interviewQ && (
+          <button className="btn-primary w-full" onClick={iniciarEntrevista} disabled={interviewing}>
+            {interviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mic className="h-4 w-4" />} Iniciar entrevista
+          </button>
+        )}
+
+        {interviewLog.length > 0 && (
+          <div className="mb-3 space-y-2">
+            {interviewLog.map((h, i) => (
+              <div key={i} className="space-y-1">
+                <p className="text-[12px] font-bold text-brand-deep">{h.q}</p>
+                <p className="rounded-lg bg-brand-pink/10 px-3 py-1.5 text-[12px] text-brand-ink/80">{h.a}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {interviewQ && !interviewDone && (
+          <div className="space-y-2 rounded-xl border border-brand-purple/20 bg-white/60 p-3">
+            <p className="text-[13px] font-bold text-brand-deep">{interviewQ}</p>
+            <div className="flex items-center justify-between">
+              <span className="label">Sua resposta</span>
+              <MicInto onText={(t) => setInterviewA((p) => (p ? p + " " + t : t))} />
+            </div>
+            <textarea className="input min-h-[80px]" value={interviewA} onChange={(e) => setInterviewA(e.target.value)} placeholder="Digite ou dite sua resposta..." />
+            <button className="btn-primary w-full" onClick={responderEntrevista} disabled={interviewing || !interviewA.trim()}>
+              {interviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Enviar resposta
+            </button>
+          </div>
+        )}
+
+        {interviewDone && (
+          <div className="mt-2 rounded-xl border border-brand-money/40 bg-brand-money/5 p-3">
+            <p className="text-[12px] font-bold text-brand-deep">Entrevista concluída! Perfil montado:</p>
+            <p className="mt-1 max-h-32 overflow-y-auto whitespace-pre-wrap text-[11px] text-brand-ink/70">{interviewPerfil}</p>
+            <div className="mt-2 flex gap-2">
+              <button className="btn-primary flex-1" onClick={() => { setF((p) => ({ ...p, professional_profile: interviewPerfil })); alert("Perfil aplicado!"); }}>Aplicar ao meu perfil</button>
+              <button className="btn-ghost" onClick={iniciarEntrevista} disabled={interviewing}>Recomeçar</button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="card p-5">

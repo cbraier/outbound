@@ -47,6 +47,8 @@ interface In {
   site?: string;
   socials?: Record<string, string>;
   instrucao?: string;
+  history?: { q: string; a: string }[];
+  context?: Record<string, unknown>;
 }
 
 function stripHtml(html: string): string {
@@ -280,6 +282,34 @@ Deno.serve(async (req) => {
         JSON.stringify({ extracted, transcript, error: extracted ? undefined : errs.join(" | ") || "Falha ao extrair" }),
         { status: extracted ? 200 : 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
+    }
+
+    // Modo ENTREVISTA: conduz uma entrevista para entender o negócio do usuário.
+    if (body.action === "interview") {
+      const hist = Array.isArray(body.history) ? body.history : [];
+      const historico = hist.map((h, i) => `P${i + 1}: ${h.q}\nR${i + 1}: ${h.a}`).join("\n\n") || "(ainda sem respostas)";
+      const system = [
+        "Você é um entrevistador comercial que ajuda um VENDEDOR a montar o perfil do negócio dele para prospecção.",
+        "Contexto do produto: 'Outbound Sales' é um app de VENDAS POR PROSPECÇÃO ATIVA — abordagem de porta em porta e, principalmente, WhatsApp a WhatsApp (mensagem direta) como PRIMEIRA entrada para conquistar clientes.",
+        "Seu objetivo: entender com precisão o que a pessoa vende/oferece, para quem, em que região, diferenciais, preço/formas de pagamento, principais objeções, e o que ela PRECISA para vender mais.",
+        "Faça perguntas CURTAS, específicas e uma de cada vez. Aproveite o que já foi respondido. Não repita perguntas.",
+        "Responda SOMENTE JSON, sem markdown.",
+      ].join("\n");
+      const user = `Contexto conhecido do vendedor:\n${JSON.stringify(body.context || {})}\n\nHistórico da entrevista:\n${historico}\n\nCom base em tudo isso:\n1) Escreva um PERFIL consolidado do vendedor/negócio (o que vende, para quem, região, diferenciais, preço, pagamento).\n2) Faça a PRÓXIMA pergunta mais útil para completar o que falta (curta).\n3) Marque "pronto": true SOMENTE se já tem informação suficiente (7+ respostas boas).\nResponda JSON: { "perfil": "texto", "pergunta": "texto", "pronto": false }`;
+      try {
+        const raw = await runChain(system, user);
+        let parsed: { perfil?: string; pergunta?: string; pronto?: boolean } | null = null;
+        try { parsed = JSON.parse(raw.replace(/```json?\n?/g, "").replace(/```/g, "").trim()); } catch { parsed = null; }
+        return new Response(JSON.stringify({
+          perfil: parsed?.perfil || "",
+          pergunta: parsed?.pergunta || raw,
+          pronto: !!parsed?.pronto,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Falha na entrevista" }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     // Modo PESQUISA: lê o site do usuário e monta o perfil profissional + perguntas.
