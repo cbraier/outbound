@@ -5,16 +5,36 @@ import { type Lead } from "@/lib/types";
 import Board from "@/components/Board";
 import ProfilePage from "@/components/ProfilePage";
 import NovoLead from "@/components/NovoLead";
+import Radar from "@/components/Radar";
 import { type CapturedLead } from "@/components/PhotoCapture";
-import { LayoutGrid, User, LogOut, Plus } from "lucide-react";
+import { LayoutGrid, User, LogOut, Plus, Radar as RadarIcon } from "lucide-react";
 
 interface ProfileRow {
   ai_instruction: string | null;
   professional_profile: string | null;
   fixed_message: string | null;
+  followup_message?: string | null;
   ai_provider: string | null;
   ai_api_key: string | null;
   site: string | null;
+  socials?: Record<string, string> | null;
+  work_address?: string | null;
+  work_lat?: number | null;
+  work_lng?: number | null;
+  radius_km?: number | null;
+  resume_text?: string | null;
+}
+
+function contextoDePerfil(p: ProfileRow): string | null {
+  const parts: string[] = [];
+  if (p.professional_profile) parts.push(p.professional_profile);
+  const s = p.socials || {};
+  const redes = Object.entries(s).filter(([, v]) => v && String(v).trim()).map(([k, v]) => `${k}: ${v}`).join(", ");
+  if (redes) parts.push(`Redes sociais: ${redes}`);
+  if (p.site) parts.push(`Site: ${p.site}`);
+  if (p.work_address) parts.push(`Atende em: ${p.work_address}${p.radius_km ? ` (raio de ${p.radius_km} km)` : ""}`);
+  if (p.resume_text) parts.push(`Currículo/portfólio (resumo do documento):\n${p.resume_text.slice(0, 4000)}`);
+  return parts.length ? parts.join("\n") : p.professional_profile;
 }
 
 function AuthScreen() {
@@ -47,7 +67,7 @@ function AuthScreen() {
     <div className="flex min-h-full items-center justify-center p-6">
       <div className="card w-full max-w-sm p-6">
         <h1 className="text-2xl font-extrabold text-brand-deep">Outbound Sales</h1>
-        <p className="mb-4 text-xs text-brand-ink/60">Fotografe a fachada e deixe a IA prospectar por você.</p>
+        <p className="mb-4 text-xs text-brand-ink/60">Fotografe a fachada e prospecte em segundos.</p>
         <div className="space-y-3">
           {mode === "up" && <div><span className="label">Nome</span><input className="input" value={nome} onChange={(e) => setNome(e.target.value)} /></div>}
           <div><span className="label">E-mail</span><input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
@@ -68,7 +88,7 @@ function AuthScreen() {
 
 function Shell() {
   const { user, loading, signOut } = useAuth();
-  const [tab, setTab] = useState<"novo" | "board" | "perfil">("novo");
+  const [tab, setTab] = useState<"novo" | "board" | "radar" | "perfil">("novo");
   const [leads, setLeads] = useState<Lead[]>([]);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
 
@@ -96,11 +116,15 @@ function Shell() {
     if (!user) return;
     await supabase.from("leads").insert({
       user_id: user.id,
-      nome: c.nome || "Estabelecimento",
+      nome: c.nome || c.contato || "Sem nome",
+      contato: c.contato || null,
       telefone: c.telefone || null,
       rede_social: c.rede_social || null,
       site: c.site || null,
       endereco: c.endereco || null,
+      rua: c.rua || null,
+      numero: c.numero || null,
+      complemento: c.complemento || null,
       bairro: c.bairro || null,
       cidade: c.cidade || null,
       estado: c.estado || null,
@@ -111,7 +135,7 @@ function Shell() {
       lat: c.lat ?? null,
       lng: c.lng ?? null,
       etapa: "lead",
-    });
+    } as never);
     await load();
   };
 
@@ -129,18 +153,35 @@ function Shell() {
 
       <main className="p-4">
         {tab === "novo" && <NovoLead userId={user.id} onCaptured={onCaptured} />}
-        {tab === "board" && <Board leads={leads} profile={profile} onRefresh={load} />}
+        {tab === "board" && (
+          <Board
+            leads={leads}
+            profile={profile ? { ...profile, professional_profile: contextoDePerfil(profile) } : null}
+            onRefresh={load}
+          />
+        )}
+        {tab === "radar" && (
+          <Radar
+            leads={leads}
+            center={profile?.work_lat != null && profile?.work_lng != null ? { lat: profile.work_lat, lng: profile.work_lng } : null}
+            profile={profile ? { ...profile, professional_profile: contextoDePerfil(profile) } : null}
+            onRefresh={load}
+          />
+        )}
         {tab === "perfil" && <ProfilePage />}
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 z-30 mx-auto flex max-w-md items-center justify-around border-t border-brand-pink/10 bg-white/85 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 backdrop-blur">
-        <button onClick={() => setTab("novo")} className={`flex flex-col items-center gap-0.5 px-6 text-[11px] font-bold ${tab === "novo" ? "text-brand-pink" : "text-brand-ink/40"}`}>
+        <button onClick={() => setTab("novo")} className={`flex flex-col items-center gap-0.5 px-4 text-[11px] font-bold ${tab === "novo" ? "text-brand-pink" : "text-brand-ink/40"}`}>
           <Plus className="h-5 w-5" /> Novo
         </button>
-        <button onClick={() => setTab("board")} className={`flex flex-col items-center gap-0.5 px-6 text-[11px] font-bold ${tab === "board" ? "text-brand-pink" : "text-brand-ink/40"}`}>
+        <button onClick={() => setTab("board")} className={`flex flex-col items-center gap-0.5 px-4 text-[11px] font-bold ${tab === "board" ? "text-brand-pink" : "text-brand-ink/40"}`}>
           <LayoutGrid className="h-5 w-5" /> Funil
         </button>
-        <button onClick={() => setTab("perfil")} className={`flex flex-col items-center gap-0.5 px-6 text-[11px] font-bold ${tab === "perfil" ? "text-brand-pink" : "text-brand-ink/40"}`}>
+        <button onClick={() => setTab("radar")} className={`flex flex-col items-center gap-0.5 px-4 text-[11px] font-bold ${tab === "radar" ? "text-brand-pink" : "text-brand-ink/40"}`}>
+          <RadarIcon className="h-5 w-5" /> Radar
+        </button>
+        <button onClick={() => setTab("perfil")} className={`flex flex-col items-center gap-0.5 px-4 text-[11px] font-bold ${tab === "perfil" ? "text-brand-pink" : "text-brand-ink/40"}`}>
           <User className="h-5 w-5" /> Perfil
         </button>
       </nav>
@@ -148,9 +189,27 @@ function Shell() {
   );
 }
 
+function Intro() {
+  return (
+    <div className="fixed inset-0 z-[999] flex flex-col items-center justify-center bg-gradient-to-br from-brand-pink via-brand-purple to-brand-deep text-white">
+      <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-white/15 text-4xl font-black">O</div>
+      <h1 className="mt-5 text-3xl font-black tracking-tight">Outbound Sales</h1>
+      <p className="mt-2 px-8 text-center text-sm font-medium text-white/80">
+        Fotografe a fachada. Prospecte em segundos. Feche mais.
+      </p>
+    </div>
+  );
+}
+
 export default function App() {
+  const [intro, setIntro] = useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => setIntro(false), 2200);
+    return () => clearTimeout(t);
+  }, []);
   return (
     <AuthProvider>
+      {intro && <Intro />}
       <Shell />
     </AuthProvider>
   );

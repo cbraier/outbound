@@ -21,14 +21,35 @@ export default function Board({
   onRefresh: () => void;
 }) {
   const [open, setOpen] = useState<Lead | null>(null);
+  const followups = leads.filter(
+    (l) => l.etapa === "prospect" && l.followup_due_at && new Date(l.followup_due_at) <= new Date() && !l.followup_sent_at,
+  );
 
   return (
     <>
+      {followups.length > 0 && (
+        <div className="mb-3 rounded-2xl border border-brand-gold/40 bg-brand-gold/10 p-3">
+          <p className="text-xs font-bold text-brand-deep">
+            Follow-ups de hoje ({followups.length}) — envie a mensagem “Pesquisa”
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {followups.map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setOpen(f)}
+                className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-brand-ink shadow-sm"
+              >
+                {f.nome}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="flex gap-3 overflow-x-auto pb-2">
         {STAGES.map((st) => {
           const col = leads.filter((l) => l.etapa === st);
           return (
-            <div key={st} className="w-64 shrink-0">
+            <div key={st} className="w-52 shrink-0">
               <div className={`mb-2 rounded-xl bg-gradient-to-br ${STAGE_COLOR[st]} px-3 py-2`}>
                 <span className="text-sm font-extrabold text-brand-deep">{STAGE_LABELS[st]}</span>
                 <span className="ml-2 text-xs font-bold text-brand-ink/50">{col.length}</span>

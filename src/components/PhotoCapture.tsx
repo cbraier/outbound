@@ -4,10 +4,14 @@ import { getCurrentLocation, getPhotoLocation, reverseGeocode, uploadLeadPhoto, 
 import { Camera, ImageUp, Loader2 } from "lucide-react";
 
 export interface CapturedLead {
+  contato?: string;
   nome?: string;
   telefone?: string;
   rede_social?: string;
   site?: string;
+  rua?: string;
+  numero?: string;
+  complemento?: string;
   endereco?: string;
   bairro?: string;
   cidade?: string;
@@ -52,9 +56,11 @@ async function comprimir(base64: string, mime: string): Promise<{ base64: string
 export default function PhotoCapture({
   userId,
   onCaptured,
+  only = "both",
 }: {
   userId: string;
   onCaptured: (lead: CapturedLead) => void;
+  only?: "camera" | "file" | "both";
 }) {
   const [busy, setBusy] = useState(false);
   const camRef = useRef<HTMLInputElement>(null);
@@ -115,14 +121,16 @@ export default function PhotoCapture({
     <>
       <input ref={camRef} type="file" accept="image/*" capture="environment" hidden onChange={onPick} />
       <input ref={fileRef} type="file" accept="image/*" hidden onChange={onPick} />
-      <div className="flex gap-2">
-        <button className="btn-primary flex-1" onClick={() => camRef.current?.click()} disabled={busy}>
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />} Câmera
+      {only !== "file" && (
+        <button className="btn-primary w-full" onClick={() => camRef.current?.click()} disabled={busy}>
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />} Tirar foto (câmera)
         </button>
-        <button className="btn-ghost flex-1" onClick={() => fileRef.current?.click()} disabled={busy}>
-          <ImageUp className="h-4 w-4" /> Arquivo
+      )}
+      {only !== "camera" && (
+        <button className="btn-ghost mt-2 w-full" onClick={() => fileRef.current?.click()} disabled={busy}>
+          <ImageUp className="h-4 w-4" /> Escolher da galeria
         </button>
-      </div>
+      )}
       <p className="mt-2 text-center text-[11px] text-brand-ink/50">
         {busy ? "Lendo a fachada..." : "A foto cria o lead automaticamente"}
       </p>

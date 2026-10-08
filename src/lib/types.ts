@@ -29,6 +29,8 @@ export interface Lead {
   mensagem: string | null;
   etapa: Stage;
   last_contact_at: string | null;
+  followup_due_at: string | null;
+  followup_sent_at: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -95,6 +95,17 @@ async function callOpenAI(key: string, system: string, user: string): Promise<st
   return j?.choices?.[0]?.message?.content || "";
 }
 
+async function callDeepSeek(key: string, system: string, user: string): Promise<string> {
+  const r = await fetch("https://api.deepseek.com/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model: "deepseek-chat", temperature: 0.7, messages: [{ role: "system", content: system }, { role: "user", content: user }] }),
+  });
+  if (!r.ok) throw new Error(`DeepSeek ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  const j = await r.json();
+  return j?.choices?.[0]?.message?.content || "";
+}
+
 async function callAnthropic(key: string, system: string, user: string): Promise<string> {
   const r = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -232,6 +243,7 @@ Escreva a mensagem de prospecção personalizada.`;
       if (provider === "gemini") text = await callGemini(byo, system, user);
       else if (provider === "openai") text = await callOpenAI(byo, system, user);
       else if (provider === "anthropic") text = await callAnthropic(byo, system, user);
+      else if (provider === "deepseek") text = await callDeepSeek(byo, system, user);
       else {
         return new Response(JSON.stringify({ error: "Provedor inválido." }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -243,6 +255,7 @@ Escreva a mensagem de prospecção personalizada.`;
         [Deno.env.get("GEMINI_API_KEY"), () => callGemini(Deno.env.get("GEMINI_API_KEY")!, system, user)],
         [Deno.env.get("OPENAI_API_KEY"), () => callOpenAI(Deno.env.get("OPENAI_API_KEY")!, system, user)],
         [Deno.env.get("ANTHROPIC_API_KEY"), () => callAnthropic(Deno.env.get("ANTHROPIC_API_KEY")!, system, user)],
+        [Deno.env.get("DEEPSEEK_API_KEY"), () => callDeepSeek(Deno.env.get("DEEPSEEK_API_KEY")!, system, user)],
       ];
       for (const [key, fn] of chain) {
         if (!key) continue;

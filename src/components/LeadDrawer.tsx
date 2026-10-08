@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { type Lead, type Stage, STAGE_LABELS } from "@/lib/types";
+import { type Lead, type Stage, STAGES, STAGE_LABELS } from "@/lib/types";
 import { brWaLink, openExternalLink } from "@/lib/wa";
 import { montar } from "@/lib/message";
 import { X, Sparkles, Loader2, Send, Save, MessageCircle, ExternalLink } from "lucide-react";
@@ -12,7 +12,7 @@ export default function LeadDrawer({
   onSaved,
 }: {
   lead: Lead;
-  profile: { ai_instruction: string | null; professional_profile: string | null; fixed_message: string | null; ai_provider: string | null; ai_api_key: string | null; site: string | null };
+  profile: { ai_instruction: string | null; professional_profile: string | null; fixed_message: string | null; followup_message?: string | null; ai_provider: string | null; ai_api_key: string | null; site: string | null };
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -60,7 +60,16 @@ export default function LeadDrawer({
     setMsg(montar(profile.fixed_message, { estabelecimento: l.nome, site: l.site || profile.site || "" }));
   };
 
-  const salvar = async (etapa?: Stage) => {
+  const usarPesquisa = () => {
+    const tpl = (profile.followup_message || "").trim();
+    if (!tpl) {
+      alert("Cadastre a mensagem “Pesquisa” no Perfil.");
+      return;
+    }
+    setMsg(montar(tpl, { estabelecimento: l.nome, site: l.site || profile.site || "" }));
+  };
+
+  const salvar = async (etapa?: Stage): Promise<boolean> => {
     setSaving(true);
     const patch = {
       nome: l.nome,
@@ -75,15 +84,40 @@ export default function LeadDrawer({
       categoria: l.categoria,
       tags: l.tags,
       mensagem: msg,
-      ...(etapa ? { etapa, last_contact_at: etapa === "prospect" ? new Date().toISOString() : l.last_contact_at } : {}),
+      ...(etapa
+        ? {
+            etapa,
+            last_contact_at: etapa === "prospect" ? new Date().toISOString() : l.last_contact_at,
+            ...(etapa === "prospect" && !l.followup_due_at
+              ? { followup_due_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() }
+              : {}),
+          }
+        : {}),
     };
-    const { error } = await supabase.from("leads").update(patch).eq("id", l.id);
-    setSaving(false);
-    if (error) {
-      alert("Erro ao salvar: " + error.message);
-      return;
+    const doUpdate = () => supabase.from("leads").update(patch).eq("id", l.id).select("id");
+    try {
+      let res = await doUpdate();
+      if (res.error) res = await doUpdate(); // 1 retry — conexão do celular oscila
+      setSaving(false);
+      if (res.error) {
+        alert("Não deu pra salvar agora (conexão). Verifique a internet e tente de novo.\n\n" + res.error.message);
+        return false;
+      }
+      onSaved();
+      return true;
+    } catch (e) {
+      setSaving(false);
+      alert("Não deu pra salvar agora (conexão). Verifique a internet e tente de novo.");
+      console.warn("[salvar lead]", e);
+      return false;
     }
-    onSaved();
+  };
+
+  const stageIdx = STAGES.indexOf(l.etapa);
+  const mover = (dir: -1 | 1) => {
+    const ni = stageIdx + dir;
+    if (ni < 0 || ni >= STAGES.length) return;
+    void salvar(STAGES[ni]);
   };
 
   const enviarWhats = async () => {
@@ -99,12 +133,15 @@ export default function LeadDrawer({
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/30" onClick={onClose}>
-      <div className="h-full w-full max-w-lg overflow-y-auto bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="h-full w-full max-w-lg overflow-y-auto bg-white px-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] pt-[calc(env(safe-area-inset-top)+1rem)] shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="mb-3 flex items-center justify-between">
           <span className="rounded-full bg-brand-purple/10 px-3 py-1 text-xs font-bold text-brand-ink">
             {STAGE_LABELS[l.etapa]}
           </span>
-          <button onClick={onClose} className="rounded-full p-2 hover:bg-black/5">
+          <button onClick={onClose} className="relative z-10 -mr-1 rounded-full p-3 hover:bg-black/5" aria-label="Fechar">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -136,17 +173,24 @@ export default function LeadDrawer({
             <span className="label">Mensagem</span>
             <div className="flex gap-2">
               <button className="btn-ghost !px-3 !py-1.5 !text-xs" onClick={usarFixa}>Fixa</button>
+              <button className="btn-ghost !px-3 !py-1.5 !text-xs" onClick={usarPesquisa}>Pesquisa</button>
               <button className="btn-primary !px-3 !py-1.5 !text-xs" onClick={gerarIA} disabled={busy}>
-                {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} IA
+                {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Elaborar
               </button>
             </div>
           </div>
-          <textarea className="input min-h-[180px] font-mono text-xs" value={msg} onChange={(e) => setMsg(e.target.value)} placeholder="Gere com IA ou escreva a abordagem..." />
+          <textarea className="input min-h-[180px] font-mono text-xs" value={msg} onChange={(e) => setMsg(e.target.value)} placeholder="Toque em Elaborar ou escreva a abordagem..." />
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
+          <button className="btn-ghost !px-3" onClick={() => mover(-1)} disabled={saving || stageIdx <= 0} title="Voltar etapa">
+            ◂
+          </button>
           <button className="btn-ghost" onClick={() => salvar()} disabled={saving}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Salvar
+          </button>
+          <button className="btn-ghost !px-3" onClick={() => mover(1)} disabled={saving || stageIdx >= STAGES.length - 1} title="Avançar etapa">
+            ▸
           </button>
           <button className="btn-primary" onClick={enviarWhats}>
             <MessageCircle className="h-4 w-4" /> Enviar no WhatsApp
