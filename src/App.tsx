@@ -27,6 +27,7 @@ interface ProfileRow {
   work_lng?: number | null;
   radius_km?: number | null;
   resume_text?: string | null;
+  full_access?: boolean | null;
 }
 
 function contextoDePerfil(p: ProfileRow): string | null {
@@ -42,7 +43,7 @@ function contextoDePerfil(p: ProfileRow): string | null {
 }
 
 function AuthScreen({ onBack }: { onBack?: () => void }) {
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, resetPassword } = useAuth();
   const [mode, setMode] = useState<"in" | "up">("in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -85,6 +86,22 @@ function AuthScreen({ onBack }: { onBack?: () => void }) {
         <button className="mt-2 w-full text-xs font-semibold text-brand-ink/60" onClick={() => setMode(mode === "in" ? "up" : "in")}>
           {mode === "in" ? "Não tem conta? Criar" : "Já tenho conta? Entrar"}
         </button>
+        {mode === "in" && (
+          <button
+            className="mt-2 w-full text-[11px] font-semibold text-brand-ink/40"
+            onClick={async () => {
+              if (!email) {
+                setErr("Digite seu e-mail no campo acima para recuperar a senha.");
+                return;
+              }
+              const { error: e2 } = await resetPassword(email);
+              if (e2) setErr(e2);
+              else setInfo(`Enviamos um link de recuperação para ${email}. Confira o e-mail (e o spam).`);
+            }}
+          >
+            Esqueci minha senha
+          </button>
+        )}
         {onBack && (
           <button className="mt-3 w-full text-[11px] font-semibold text-brand-ink/40" onClick={onBack}>
             ← Voltar
@@ -95,8 +112,43 @@ function AuthScreen({ onBack }: { onBack?: () => void }) {
   );
 }
 
+function NewPasswordScreen() {
+  const { updatePassword, clearRecovery, signOut } = useAuth();
+  const [pwd, setPwd] = useState("");
+  const [pwd2, setPwd2] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const submit = async () => {
+    if (pwd.length < 6) return setErr("A senha precisa ter ao menos 6 caracteres.");
+    if (pwd !== pwd2) return setErr("As senhas não coincidem.");
+    setBusy(true);
+    const { error } = await updatePassword(pwd);
+    setBusy(false);
+    if (error) return setErr(error);
+    alert("Senha atualizada! Faça login com a nova senha.");
+    clearRecovery();
+    await signOut();
+  };
+  return (
+    <div className="flex min-h-full items-center justify-center p-6">
+      <div className="card w-full max-w-sm p-6">
+        <h1 className="text-xl font-extrabold text-brand-deep">Definir nova senha</h1>
+        <p className="mb-4 text-xs text-brand-ink/60">Digite a nova senha para a sua conta.</p>
+        <div className="space-y-3">
+          <div><span className="label">Nova senha</span><input className="input" type="password" value={pwd} onChange={(e) => setPwd(e.target.value)} /></div>
+          <div><span className="label">Confirmar senha</span><input className="input" type="password" value={pwd2} onChange={(e) => setPwd2(e.target.value)} /></div>
+        </div>
+        {err && <p className="mt-2 text-xs text-red-500">{err}</p>}
+        <button className="btn-primary mt-4 w-full" onClick={submit} disabled={busy || !pwd || !pwd2}>
+          {busy ? "Salvando..." : "Salvar nova senha"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function Shell() {
-  const { user, loading, signOut } = useAuth();
+  const { user, loading, signOut, recovery } = useAuth();
   const [tab, setTab] = useState<"novo" | "board" | "radar" | "agenda" | "perfil">("novo");
   const [agendaFocus, setAgendaFocus] = useState<Date | null>(null);
   const [showAuth, setShowAuth] = useState(false);
@@ -104,6 +156,10 @@ function Shell() {
 
   useEffect(() => {
     if (!user) return;
+    if (profile?.full_access) {
+      setEntitled(true);
+      return;
+    }
     let alive = true;
     (async () => {
       await initBilling(user.id);
@@ -111,7 +167,7 @@ function Shell() {
       if (alive) setEntitled(ok);
     })();
     return () => { alive = false; };
-  }, [user?.id]);
+  }, [user?.id, profile?.full_access]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
 
@@ -163,6 +219,7 @@ function Shell() {
   };
 
   if (loading) return <div className="flex min-h-full items-center justify-center">Carregando...</div>;
+  if (recovery) return <NewPasswordScreen />;
   if (!user) return showAuth ? <AuthScreen onBack={() => setShowAuth(false)} /> : <Landing onStart={() => setShowAuth(true)} />;
   if (entitled === false) return <Paywall onDone={() => setEntitled(true)} onSignOut={signOut} />;
 
