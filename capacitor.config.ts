@@ -5,6 +5,11 @@ const config: CapacitorConfig = {
   appName: "Outbound Sales",
   webDir: "dist",
   server: { androidScheme: "https" },
+  ios: {
+    preferredContentMode: "mobile",
+    contentInset: "never",
+    scrollEnabled: true,
+  },
 };
 
 export default config;

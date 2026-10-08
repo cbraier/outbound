@@ -120,7 +120,7 @@ function Shell() {
 
   return (
     <div className="min-h-full pb-20">
-      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-brand-pink/10 bg-white/70 px-4 py-3 backdrop-blur">
+      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-brand-pink/10 bg-white/70 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] backdrop-blur">
         <h1 className="text-lg font-extrabold tracking-tight text-brand-deep">Outbound Sales</h1>
         <button onClick={signOut} className="rounded-full p-2 text-brand-ink/50 hover:bg-black/5" title="Sair">
           <LogOut className="h-4.5 w-4.5" />
@@ -133,7 +133,7 @@ function Shell() {
         {tab === "perfil" && <ProfilePage />}
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 z-30 mx-auto flex max-w-md items-center justify-around border-t border-brand-pink/10 bg-white/85 py-2 backdrop-blur">
+      <nav className="fixed bottom-0 left-0 right-0 z-30 mx-auto flex max-w-md items-center justify-around border-t border-brand-pink/10 bg-white/85 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 backdrop-blur">
         <button onClick={() => setTab("novo")} className={`flex flex-col items-center gap-0.5 px-6 text-[11px] font-bold ${tab === "novo" ? "text-brand-pink" : "text-brand-ink/40"}`}>
           <Plus className="h-5 w-5" /> Novo
         </button>
