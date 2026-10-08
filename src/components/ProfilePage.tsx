@@ -545,6 +545,7 @@ export default function ProfilePage() {
           <p className="text-[10px] text-brand-ink/60">
             Usa a sua <b>região</b> (campo Atendimento) para buscar na web. Depois é só adicionar como leads no funil.
           </p>
+          {discBusy && <p className="text-[11px] font-semibold text-brand-ink/70">Buscando “{discSector}” na sua região…</p>}
           {discMsg && <p className="text-[11px] text-brand-ink/70">{discMsg}</p>}
           {discList.length > 0 && (
             <div className="space-y-2">

@@ -63,11 +63,13 @@ export default function PhotoCapture({
   only?: "camera" | "file" | "both";
 }) {
   const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
   const camRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const enviar = async (base64: string, mime: string) => {
     setBusy(true);
+    setMsg("");
     try {
       const comp = await comprimir(base64, mime);
       // 1) visão: extrai os dados da fachada
@@ -102,6 +104,11 @@ export default function PhotoCapture({
         lat: loc?.lat,
         lng: loc?.lng,
       });
+      setMsg("✓ Lead criado! Já está no Funil.");
+    } catch (e) {
+      const m = e instanceof Error ? e.message : "Não consegui ler a foto.";
+      setMsg("Erro: " + m);
+      alert("Não consegui ler a foto agora.\n\n" + m);
     } finally {
       setBusy(false);
     }
@@ -131,8 +138,8 @@ export default function PhotoCapture({
           <ImageUp className="h-4 w-4" /> Escolher da galeria
         </button>
       )}
-      <p className="mt-2 text-center text-[11px] text-brand-ink/50">
-        {busy ? "Lendo a fachada..." : "A foto cria o lead automaticamente"}
+      <p className={`mt-2 text-center text-[11px] ${msg.startsWith("Erro") ? "font-semibold text-red-500" : "text-brand-ink/60"}`}>
+        {busy ? "Lendo a fachada..." : msg || "A foto cria o lead automaticamente"}
       </p>
     </>
   );
