@@ -27,6 +27,7 @@ export interface Lead {
   lat: number | null;
   lng: number | null;
   mensagem: string | null;
+  web_research: string | null;
   etapa: Stage;
   last_contact_at: string | null;
   followup_due_at: string | null;

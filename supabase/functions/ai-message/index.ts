@@ -54,6 +54,7 @@ interface In {
   nome?: string;
   company?: string;
   site?: string;
+  city?: string;
   socials?: Record<string, string>;
   instrucao?: string;
   history?: { q: string; a: string }[];
@@ -215,6 +216,68 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ ok: true, provider, sample: (out || "").slice(0, 80) }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       } catch (e) {
         return new Response(JSON.stringify({ ok: false, error: e instanceof Error ? e.message : "Falha" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
+    // Modo ENRICH: pesquisa o prospect na web (Exa/Tavily) e resume o negócio.
+    if (body.action === "enrich") {
+      const nome = body.nome || "";
+      const site = body.site || "";
+      const cidade = body.city || "";
+      const sources: { title: string; url: string; text: string }[] = [];
+      const EXA = Deno.env.get("EXA_API_KEY");
+      const TAV = Deno.env.get("TAVILY_API_KEY");
+      if (EXA) {
+        try {
+          const q = [nome, cidade, "site oficial instagram facebook contato"].filter(Boolean).join(" ");
+          const r = await fetchTimeout("https://api.exa.ai/search", {
+            method: "POST",
+            headers: { "x-api-key": EXA, "Content-Type": "application/json" },
+            body: JSON.stringify({ query: q, numResults: 5, contents: { text: { maxCharacters: 2000 } } }),
+          }, 25000);
+          if (r.ok) {
+            const j = await r.json();
+            for (const x of (j.results || [])) sources.push({ title: x.title || "", url: x.url || "", text: x.text || "" });
+          }
+        } catch { /* ignora */ }
+      }
+      if (TAV) {
+        try {
+          const q = [nome, cidade].filter(Boolean).join(" ");
+          const r = await fetchTimeout("https://api.tavily.com/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ api_key: TAV, query: q, max_results: 4, include_raw_content: true }),
+          }, 25000);
+          if (r.ok) {
+            const j = await r.json();
+            for (const x of (j.results || [])) sources.push({ title: x.title || "", url: x.url || "", text: String(x.content || x.raw_content || "").slice(0, 1500) });
+          }
+        } catch { /* ignora */ }
+      }
+      if (!sources.length) {
+        return new Response(
+          JSON.stringify({ error: EXA || TAV ? "Nada encontrado na web para este prospect." : "Pesquisa na web não configurada (falta a chave da Exa)." }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      const system = "Você analisa um prospect a partir de fontes públicas da web e ajuda um vendedor a ofertar serviços de prospecção/tecnologia. Responda SOMENTE JSON, sem markdown.";
+      const user = `Prospect: ${nome}${site ? ` — site: ${site}` : ""}${cidade ? ` — ${cidade}` : ""}\n\nFontes encontradas:\n${sources.map((s, i) => `[${i + 1}] ${s.title} ${s.url}\n${s.text}`).join("\n\n")}\n\nResponda JSON: { "resumo": "o que o negócio é e faz", "presenca_digital": "site/redes/nota", "oportunidades": ["...","..."] }`;
+      try {
+        const raw = await runChain(system, user);
+        const parsed = (parseJson(raw) || {}) as { resumo?: string; presenca_digital?: string; oportunidades?: string[] };
+        const resumo = parsed.resumo || raw;
+        const presenca = parsed.presenca_digital || "";
+        const oport = Array.isArray(parsed.oportunidades) ? parsed.oportunidades : [];
+        const texto = `Resumo: ${resumo}\nPresença digital: ${presenca}\nOportunidades: ${oport.join("; ")}`;
+        return new Response(
+          JSON.stringify({ resumo, presenca_digital: presenca, oportunidades: oport, texto, fontes: sources.map((s) => s.url) }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Falha ao analisar" }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
     }
 
@@ -383,6 +446,7 @@ Deno.serve(async (req) => {
 - Site: ${lead.site || "não informado"}
 - Endereço: ${endereco}
 - Observações: ${lead.observacoes || "não informado"}
+- Pesquisa na web sobre o prospect: ${lead.web_research || "não informado"}
 
 Escreva a mensagem de prospecção personalizada.`;
 

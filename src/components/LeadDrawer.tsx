@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { type Lead, type Stage, STAGES, STAGE_LABELS } from "@/lib/types";
 import { brWaLink, openExternalLink } from "@/lib/wa";
 import { montar } from "@/lib/message";
-import { X, Sparkles, Loader2, Send, Save, MessageCircle, ExternalLink, CalendarClock } from "lucide-react";
+import { X, Sparkles, Loader2, Send, Save, MessageCircle, ExternalLink, CalendarClock, Search } from "lucide-react";
 
 const TIPOS_AG = [
   { v: "follow-up", label: "Follow-up" },
@@ -33,10 +33,35 @@ export default function LeadDrawer({
   const [zoom, setZoom] = useState(false);
   const [iaInfo, setIaInfo] = useState("");
   const [tipoOpen, setTipoOpen] = useState(false);
+  const [webBusy, setWebBusy] = useState(false);
+  const [webInfo, setWebInfo] = useState("");
 
   useEffect(() => setL(lead), [lead]);
 
   const upd = (patch: Partial<Lead>) => setL((p) => ({ ...p, ...patch }));
+
+  const pesquisarWeb = async () => {
+    setWebBusy(true);
+    setWebInfo("");
+    try {
+      const { data, error } = await supabase.functions.invoke("ai-message", {
+        body: { action: "enrich", nome: l.nome, site: l.site || undefined, city: l.cidade || undefined },
+      });
+      if (error) throw error;
+      if (data?.error) {
+        setWebInfo(data.error);
+        return;
+      }
+      const texto = data.texto || data.resumo || "";
+      upd({ web_research: texto });
+      await supabase.from("leads").update({ web_research: texto } as never).eq("id", l.id);
+      setWebInfo(texto || "Encontrei informações na web.");
+    } catch (e) {
+      setWebInfo(e instanceof Error ? e.message : "Falha na pesquisa");
+    } finally {
+      setWebBusy(false);
+    }
+  };
 
   const gerarIA = async () => {
     setBusy(true);
@@ -49,7 +74,7 @@ export default function LeadDrawer({
           professional_profile: profile.professional_profile,
           provider: profile.ai_provider || "default",
           api_key: profile.ai_api_key || undefined,
-          lead: { nome: l.nome, categoria: l.categoria, tags: l.tags, rede_social: l.rede_social, site: l.site, endereco: l.endereco, bairro: l.bairro, cidade: l.cidade, estado: l.estado },
+          lead: { nome: l.nome, categoria: l.categoria, tags: l.tags, rede_social: l.rede_social, site: l.site, endereco: l.endereco, bairro: l.bairro, cidade: l.cidade, estado: l.estado, web_research: l.web_research },
         },
       });
       if (error) throw error;
@@ -226,6 +251,10 @@ export default function LeadDrawer({
           </div>
           <textarea className="input min-h-[180px] font-mono text-xs" value={msg} onChange={(e) => setMsg(e.target.value)} placeholder="Toque em Elaborar ou escreva a abordagem..." />
           {iaInfo && <p className="mt-1 text-[11px] font-semibold text-brand-money">{iaInfo}</p>}
+          <button className="btn-ghost mt-2 w-full !py-1.5 !text-xs" onClick={pesquisarWeb} disabled={webBusy} title="Pesquisar o prospect na web">
+            {webBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />} {webBusy ? "Pesquisando na web..." : "Pesquisar na web"}
+          </button>
+          {webInfo && <p className="mt-1 whitespace-pre-wrap text-[11px] text-brand-ink/60">{webInfo}</p>}
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
