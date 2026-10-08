@@ -7,7 +7,7 @@ import ProfilePage from "@/components/ProfilePage";
 import NovoLead from "@/components/NovoLead";
 import Landing from "@/components/Landing";
 import Paywall from "@/components/Paywall";
-import { initBilling, hasActiveEntitlement, getCurrentOffering } from "@/lib/billing";
+import { initBilling, hasActiveEntitlement, getCurrentOffering, isNative } from "@/lib/billing";
 import Radar from "@/components/Radar";
 import AgendaPage from "@/components/AgendaPage";
 import { type CapturedLead } from "@/components/PhotoCapture";
@@ -227,7 +227,11 @@ function Shell() {
 
   if (loading) return <div className="flex min-h-full items-center justify-center">Carregando...</div>;
   if (recovery) return <NewPasswordScreen />;
-  if (!user) return showAuth ? <AuthScreen onBack={() => setShowAuth(false)} /> : <Landing onStart={() => setShowAuth(true)} />;
+  if (!user) {
+    const native = isNative();
+    if (native || showAuth) return <AuthScreen onBack={native ? undefined : () => setShowAuth(false)} />;
+    return <Landing onStart={() => setShowAuth(true)} />;
+  }
   if (entitled === false) return <Paywall onDone={() => setEntitled(true)} onSignOut={signOut} />;
 
   return (
