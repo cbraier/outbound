@@ -215,7 +215,7 @@ function Shell() {
 
   const onCaptured = async (c: CapturedLead) => {
     if (!user) return;
-    await supabase.from("leads").insert({
+    const { error } = await supabase.from("leads").insert({
       user_id: user.id,
       nome: c.nome || c.contato || "Sem nome",
       contato: c.contato || null,
@@ -237,6 +237,7 @@ function Shell() {
       lng: c.lng ?? null,
       etapa: "lead",
     } as never);
+    if (error) throw new Error(error.message);
     await load();
   };
 

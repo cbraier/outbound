@@ -59,7 +59,7 @@ export default function PhotoCapture({
   only = "both",
 }: {
   userId: string;
-  onCaptured: (lead: CapturedLead) => void;
+  onCaptured: (lead: CapturedLead) => void | Promise<void>;
   only?: "camera" | "file" | "both";
 }) {
   const [busy, setBusy] = useState(false);
@@ -88,7 +88,7 @@ export default function PhotoCapture({
       if (loc) addr = await reverseGeocode(loc.lat, loc.lng);
 
       const tags = Array.isArray(ext.tags) ? (ext.tags as string[]) : undefined;
-      onCaptured({
+      await onCaptured({
         nome: (ext.nome as string) || undefined,
         telefone: ((ext.celular as string) || (ext.telefone as string) || undefined)?.replace(/\D/g, "") || undefined,
         rede_social: (ext.rede_social as string) || undefined,

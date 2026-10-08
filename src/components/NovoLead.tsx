@@ -27,7 +27,7 @@ async function blobToB64(blob: Blob): Promise<string> {
   });
 }
 
-export default function NovoLead({ userId, onCaptured }: { userId: string; onCaptured: (c: CapturedLead) => void }) {
+export default function NovoLead({ userId, onCaptured }: { userId: string; onCaptured: (c: CapturedLead) => void | Promise<void> }) {
   const [mode, setMode] = useState<"camera" | "imagem" | "audio" | "manual">("camera");
   const [f, setF] = useState(EMPTY);
   const [recording, setRecording] = useState(false);
@@ -35,8 +35,8 @@ export default function NovoLead({ userId, onCaptured }: { userId: string; onCap
   const recRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
-  const aplicarExtraido = (ext: Record<string, unknown>) => {
-    onCaptured({
+  const aplicarExtraido = async (ext: Record<string, unknown>) => {
+    await onCaptured({
       nome: (ext.nome as string) || undefined,
       telefone: ((ext.celular as string) || (ext.telefone as string) || undefined)?.replace(/\D/g, "") || undefined,
       rede_social: (ext.rede_social as string) || undefined,
@@ -66,7 +66,7 @@ export default function NovoLead({ userId, onCaptured }: { userId: string; onCap
           const { data, error } = await supabase.functions.invoke("ai-message", { body: { audio_base64: b64, audio_mime: blob.type } });
           if (error) throw error;
           if (data?.error) throw new Error(data.error);
-          aplicarExtraido((data?.extracted || {}) as Record<string, unknown>);
+          await aplicarExtraido((data?.extracted || {}) as Record<string, unknown>);
         } catch (e) {
           alert(e instanceof Error ? e.message : "Falha no áudio");
         } finally {
@@ -95,27 +95,31 @@ export default function NovoLead({ userId, onCaptured }: { userId: string; onCap
     }
   };
 
-  const salvarManual = () => {
+  const salvarManual = async () => {
     if (!f.nome.trim() && !f.contato.trim()) {
       alert("Preencha pelo menos o nome do contato ou do estabelecimento.");
       return;
     }
     const endereco = [f.rua, f.numero, f.bairro, f.cidade].filter(Boolean).join(", ");
-    onCaptured({
-      contato: f.contato || undefined,
-      nome: f.nome || f.contato,
-      telefone: phoneDigits(f.telefone) || undefined,
-      site: withHttps(f.site) || undefined,
-      categoria: f.categoria || undefined,
-      cep: f.cep || undefined,
-      rua: f.rua || undefined,
-      numero: f.numero || undefined,
-      complemento: f.complemento || undefined,
-      bairro: f.bairro || undefined,
-      cidade: f.cidade || undefined,
-      endereco: endereco || undefined,
-    });
-    setF(EMPTY);
+    try {
+      await onCaptured({
+        contato: f.contato || undefined,
+        nome: f.nome || f.contato,
+        telefone: phoneDigits(f.telefone) || undefined,
+        site: withHttps(f.site) || undefined,
+        categoria: f.categoria || undefined,
+        cep: f.cep || undefined,
+        rua: f.rua || undefined,
+        numero: f.numero || undefined,
+        complemento: f.complemento || undefined,
+        bairro: f.bairro || undefined,
+        cidade: f.cidade || undefined,
+        endereco: endereco || undefined,
+      });
+      setF(EMPTY);
+    } catch (e) {
+      alert("Não deu pra salvar o lead: " + (e instanceof Error ? e.message : "erro"));
+    }
   };
 
   const MODES = [
