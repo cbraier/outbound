@@ -89,3 +89,7 @@ export async function uploadLeadPhoto(base64: string, mime: string, userId: stri
 export function googleMapsUrl(lat: number, lng: number): string {
   return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
 }
+
+export function googleMapsDirectionsUrl(lat: number, lng: number): string {
+  return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+}

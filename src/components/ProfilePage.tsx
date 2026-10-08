@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { getCurrentLocation, reverseGeocode } from "@/lib/geo";
+import { socialUrl } from "@/lib/format";
 import { Loader2, Save, Paperclip, MapPin, X, Mic, Square } from "lucide-react";
 
 async function blobToB64(blob: Blob): Promise<string> {
@@ -176,10 +177,14 @@ export default function ProfilePage() {
         professional_profile: f.professional_profile,
         fixed_message: f.fixed_message,
         followup_message: f.followup_message,
+        socials: f.socials,
+        site: withHttps(f.site),
+        work_address: f.work_address,
+        radius_km: Number(f.radius_km) || 15,
       } as never, { onConflict: "user_id" });
     }, 1500);
     return () => window.clearTimeout(t);
-  }, [f.ai_instruction, f.professional_profile, f.fixed_message, f.followup_message]);
+  }, [f.ai_instruction, f.professional_profile, f.fixed_message, f.followup_message, f.socials, f.site, f.work_address, f.radius_km]);
 
   const salvar = async () => {
     if (!user) return;
@@ -279,7 +284,13 @@ export default function ProfilePage() {
           {SOCIAL_KEYS.map((s) => (
             <div key={s.k}>
               <span className="label">{s.label}</span>
-              <input className="input" value={f.socials[s.k] || ""} onChange={(e) => setSocial(s.k, e.target.value)} placeholder={s.k === "whatsapp" ? "(48) 99999-9999" : "@perfil"} />
+              <input
+                className="input"
+                value={f.socials[s.k] || ""}
+                onChange={(e) => setSocial(s.k, e.target.value)}
+                onBlur={(e) => setSocial(s.k, socialUrl(s.k, e.target.value))}
+                placeholder={s.k === "whatsapp" ? "(48) 99999-9999" : `@seu${s.k}`}
+              />
             </div>
           ))}
         </div>

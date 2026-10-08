@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { type Lead, type Stage, STAGES, STAGE_LABELS } from "@/lib/types";
 import { brWaLink, openExternalLink } from "@/lib/wa";
 import { montar } from "@/lib/message";
-import { X, Sparkles, Loader2, Send, Save, MessageCircle, ExternalLink } from "lucide-react";
+import { X, Sparkles, Loader2, Send, Save, MessageCircle, ExternalLink, CalendarClock } from "lucide-react";
 
 export default function LeadDrawer({
   lead,
@@ -124,6 +124,18 @@ export default function LeadDrawer({
     }
   };
 
+  const agendarFup = async () => {
+    await supabase.from("agenda_events").insert({
+      user_id: l.user_id,
+      titulo: `Pesquisa — ${l.nome}`,
+      tipo: "follow-up",
+      data_inicio: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      alerta_minutos: 30,
+      lead_id: l.id,
+    } as never);
+    alert("Follow-up agendado para amanhã na Agenda.");
+  };
+
   const stageIdx = STAGES.indexOf(l.etapa);
   const mover = (dir: -1 | 1) => {
     const ni = stageIdx + dir;
@@ -205,6 +217,9 @@ export default function LeadDrawer({
           </button>
           <button className="btn-primary" onClick={enviarWhats}>
             <MessageCircle className="h-4 w-4" /> Enviar no WhatsApp
+          </button>
+          <button className="btn-ghost" onClick={agendarFup} title="Agendar follow-up para amanhã">
+            <CalendarClock className="h-4 w-4" /> Agendar FUP
           </button>
         </div>
         <p className="mt-2 text-[11px] text-brand-ink/50">

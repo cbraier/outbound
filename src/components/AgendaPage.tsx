@@ -35,11 +35,15 @@ export default function AgendaPage() {
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ id: "", titulo: "", tipo: "follow-up", descricao: "", data_inicio: "", alerta_minutos: 30 });
+  const [leads, setLeads] = useState<{ id: string; nome: string }[]>([]);
+  const [leadQuery, setLeadQuery] = useState("");
+  const [form, setForm] = useState({ id: "", titulo: "", tipo: "follow-up", descricao: "", data_inicio: "", alerta_minutos: 30, lead_id: "" });
 
   const load = useCallback(async () => {
     if (!user) return;
     const { data } = await supabase.from("agenda_events").select("*").order("data_inicio", { ascending: true });
+    const { data: ls } = await supabase.from("leads").select("id, nome").order("nome").limit(500);
+    setLeads((ls as { id: string; nome: string }[]) || []);
     const evs = (data as Event[]) || [];
     setEvents(evs);
     setLoading(false);
@@ -56,14 +60,16 @@ export default function AgendaPage() {
     const d = new Date(selected);
     d.setHours(9, 0, 0, 0);
     const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-    setForm({ id: "", titulo: "", tipo: "follow-up", descricao: "", data_inicio: local, alerta_minutos: 30 });
+    setForm({ id: "", titulo: "", tipo: "follow-up", descricao: "", data_inicio: local, alerta_minutos: 30, lead_id: "" });
+    setLeadQuery("");
     setFormOpen(true);
   };
 
   const abrirEdit = (e: Event) => {
     const d = new Date(e.data_inicio);
     const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-    setForm({ id: e.id, titulo: e.titulo, tipo: e.tipo, descricao: e.descricao || "", data_inicio: local, alerta_minutos: e.alerta_minutos ?? 30 });
+    setForm({ id: e.id, titulo: e.titulo, tipo: e.tipo, descricao: e.descricao || "", data_inicio: local, alerta_minutos: e.alerta_minutos ?? 30, lead_id: "" });
+    setLeadQuery("");
     setFormOpen(true);
   };
 
@@ -82,6 +88,7 @@ export default function AgendaPage() {
       data_inicio: new Date(form.data_inicio).toISOString(),
       alerta_minutos: Number(form.alerta_minutos) || 30,
       cor: TIPOS.find((t) => t.v === form.tipo)?.cor || null,
+      lead_id: form.lead_id || null,
     };
     const res = form.id
       ? await supabase.from("agenda_events").update(payload as never).eq("id", form.id)
@@ -173,6 +180,24 @@ export default function AgendaPage() {
             </div>
             <div className="space-y-2">
               <div><span className="label">Título</span><input className="input" value={form.titulo} onChange={(e) => setForm({ ...form, titulo: e.target.value })} /></div>
+              <div>
+                <span className="label">Buscar lead (opcional)</span>
+                <input className="input" value={leadQuery} onChange={(e) => setLeadQuery(e.target.value)} placeholder="Nome do lead cadastrado" />
+                {leadQuery.trim() && (
+                  <div className="mt-1 max-h-32 overflow-y-auto rounded-lg border border-brand-purple/20 bg-white">
+                    {leads.filter((l) => l.nome?.toLowerCase().includes(leadQuery.toLowerCase())).slice(0, 6).map((l) => (
+                      <button
+                        key={l.id}
+                        type="button"
+                        className="block w-full px-3 py-1.5 text-left text-xs hover:bg-brand-pink/10"
+                        onClick={() => { setForm((f) => ({ ...f, lead_id: l.id, titulo: f.titulo || l.nome })); setLeadQuery(l.nome); }}
+                      >
+                        {l.nome}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <span className="label">Tipo</span>

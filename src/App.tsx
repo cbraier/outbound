@@ -209,7 +209,7 @@ function Intro() {
 export default function App() {
   const [intro, setIntro] = useState(true);
   useEffect(() => {
-    const t = setTimeout(() => setIntro(false), 2200);
+    const t = setTimeout(() => setIntro(false), 3200);
     return () => clearTimeout(t);
   }, []);
   return (

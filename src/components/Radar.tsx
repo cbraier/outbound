@@ -1,20 +1,20 @@
 import { useState } from "react";
+import { MapContainer, TileLayer, Marker, Popup, Circle } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import { type Lead } from "@/lib/types";
 import LeadDrawer from "@/components/LeadDrawer";
+import { googleMapsDirectionsUrl } from "@/lib/geo";
+import { openExternalLink } from "@/lib/wa";
 
-const SIZE = 320;
-const MAX_KM = 30;
-
-function dist(x: { lat: number; lng: number }, c: { lat: number; lng: number }) {
-  const dLat = (x.lat - c.lat) * 111;
-  const dLng = (x.lng - c.lng) * 111 * Math.cos((c.lat * Math.PI) / 180);
-  return { dx: dLng, dy: dLat, km: Math.sqrt(dx0(x, c) ** 2 + dy0(x, c) ** 2) };
-}
-function dx0(x: { lng: number }, c: { lng: number; lat: number }) {
-  return (x.lng - c.lng) * 111 * Math.cos((c.lat * Math.PI) / 180);
-}
-function dy0(x: { lat: number }, c: { lat: number }) {
-  return (x.lat - c.lat) * 111;
+function dot(color: string, big = false) {
+  const s = big ? 22 : 16;
+  return L.divIcon({
+    className: "",
+    html: `<div style="width:${s}px;height:${s}px;border-radius:9999px;background:${color};box-shadow:0 0 0 3px rgba(255,255,255,0.9),0 1px 6px rgba(0,0,0,.35)"></div>`,
+    iconSize: [s, s],
+    iconAnchor: [s / 2, s / 2],
+  });
 }
 
 export default function Radar({
@@ -30,57 +30,63 @@ export default function Radar({
 }) {
   const [open, setOpen] = useState<Lead | null>(null);
   const pts = leads.filter((l) => l.lat != null && l.lng != null);
-  const sc = SIZE / 2 / MAX_KM;
-
-  if (!center) {
-    return (
-      <div className="mx-auto max-w-md rounded-2xl border border-brand-purple/20 bg-white/70 p-6 text-center text-sm text-brand-ink/70">
-        Cadastre sua <b>localização de atendimento</b> no Perfil (endereço ou “usar minha localização”) para ver os leads ao redor.
-      </div>
-    );
-  }
-  if (!pts.length) {
-    return (
-      <div className="mx-auto max-w-md rounded-2xl border border-brand-purple/20 bg-white/70 p-6 text-center text-sm text-brand-ink/70">
-        Nenhum lead com localização ainda. Cadastre por foto (a localização vem do GPS).
-      </div>
-    );
-  }
+  const centerPt: [number, number] = center
+    ? [center.lat, center.lng]
+    : pts.length
+    ? [pts[0].lat as number, pts[0].lng as number]
+    : [-27.6, -48.6];
 
   return (
     <>
-      <div className="mx-auto max-w-md">
-        <p className="mb-2 text-center text-sm font-bold text-brand-deep">Radar — leads ao seu redor</p>
-        <div className="relative mx-auto overflow-hidden rounded-2xl border border-brand-purple/20 bg-gradient-to-br from-brand-pink/10 to-brand-purple/10" style={{ width: SIZE, height: SIZE }}>
-          {[10, 20, 30].map((km) => (
-            <div key={km} className="absolute rounded-full border border-brand-purple/20" style={{ left: SIZE / 2 - km * sc, top: SIZE / 2 - km * sc, width: km * 2 * sc, height: km * 2 * sc }} />
-          ))}
-          <div className="absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-deep ring-4 ring-brand-deep/20" />
-          {pts.map((l) => {
-            const dx = dx0(l as { lng: number }, center) * sc;
-            const dy = -dy0(l as { lat: number }, center) * sc;
-            const clamp = (v: number) => Math.max(-SIZE / 2 + 10, Math.min(SIZE / 2 - 10, v));
-            return (
-              <button
-                key={l.id}
-                onClick={() => setOpen(l)}
-                title={l.nome}
-                className="absolute h-3 w-3 rounded-full bg-brand-pink shadow ring-2 ring-white transition hover:scale-150"
-                style={{ left: SIZE / 2 + clamp(dx) - 6, top: SIZE / 2 + clamp(dy) - 6 }}
-              />
-            );
-          })}
+      {!center && (
+        <div className="mx-auto mb-3 max-w-md rounded-2xl border border-brand-purple/20 bg-white/70 p-3 text-center text-xs text-brand-ink/70">
+          Dica: cadastre sua <b>localização de atendimento</b> no Perfil para centralizar o mapa em você.
         </div>
-        <p className="mt-2 text-center text-[11px] text-brand-ink/50">Toque num ponto para abrir o lead no kanban.</p>
+      )}
+      <div className="mx-auto max-w-md overflow-hidden rounded-2xl border border-brand-purple/20" style={{ height: 420 }}>
+        <MapContainer center={centerPt} zoom={13} style={{ height: "100%", width: "100%" }}>
+          <TileLayer
+            attribution='&copy; OpenStreetMap'
+            url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+          {center && (
+            <>
+              <Marker position={[center.lat, center.lng]} icon={dot("#3B0764", true)}>
+                <Popup>Você (local de atendimento)</Popup>
+              </Marker>
+              <Circle center={[center.lat, center.lng]} radius={15000} pathOptions={{ color: "#A855F7", fillOpacity: 0.05 }} />
+            </>
+          )}
+          {pts.map((l) => (
+            <Marker key={l.id} position={[l.lat as number, l.lng as number]} icon={dot("#FF5FA2")}>
+              <Popup>
+                <div className="space-y-1">
+                  <b>{l.nome}</b>
+                  {l.categoria && <div style={{ fontSize: 11, color: "#6b7280" }}>{l.categoria}</div>}
+                  <button
+                    onClick={() => setOpen(l)}
+                    style={{ display: "block", width: "100%", marginTop: 4, padding: "4px 8px", borderRadius: 8, background: "#FF5FA2", color: "#fff", fontWeight: 700, fontSize: 12, border: 0 }}
+                  >
+                    Abrir lead
+                  </button>
+                  <button
+                    onClick={() => openExternalLink(googleMapsDirectionsUrl(l.lat as number, l.lng as number))}
+                    style={{ display: "block", width: "100%", marginTop: 4, padding: "4px 8px", borderRadius: 8, border: "1px solid #A855F7", color: "#4C1D95", fontWeight: 700, fontSize: 12, background: "#fff" }}
+                  >
+                    Como chegar
+                  </button>
+                </div>
+              </Popup>
+            </Marker>
+          ))}
+        </MapContainer>
       </div>
+      <p className="mx-auto mt-2 max-w-md text-center text-[11px] text-brand-ink/50">
+        Toque num ponto para abrir o lead ou “Como chegar”.
+      </p>
 
       {open && profile && (
-        <LeadDrawer
-          lead={open}
-          profile={profile}
-          onClose={() => setOpen(null)}
-          onSaved={() => { setOpen(null); onRefresh(); }}
-        />
+        <LeadDrawer lead={open} profile={profile} onClose={() => setOpen(null)} onSaved={() => { setOpen(null); onRefresh(); }} />
       )}
     </>
   );

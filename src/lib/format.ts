@@ -19,6 +19,23 @@ export function withHttps(v: string): string {
   return /^https?:\/\//i.test(s) ? s : `https://${s}`;
 }
 
+/** Converte @handle em URL completa da rede (o app preenche automaticamente). */
+export function socialUrl(key: string, raw: string): string {
+  const v = (raw || "").trim();
+  if (!v) return "";
+  if (/^https?:\/\//i.test(v)) return v;
+  const h = v.replace(/^@/, "").replace(/\s+/g, "");
+  switch (key) {
+    case "instagram": return `https://instagram.com/${h}`;
+    case "facebook": return `https://facebook.com/${h}`;
+    case "linkedin": return `https://www.linkedin.com/in/${h}`;
+    case "tiktok": return `https://www.tiktok.com/@${h}`;
+    case "youtube": return `https://youtube.com/@${h}`;
+    case "whatsapp": return `https://wa.me/55${h.replace(/\D/g, "")}`;
+    default: return v;
+  }
+}
+
 /** Máscara de CEP 00000-000 */
 export function maskCep(v: string): string {
   const d = (v || "").replace(/\D/g, "").slice(0, 8);

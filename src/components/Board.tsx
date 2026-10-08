@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { supabase } from "@/lib/supabase";
 import { type Lead, STAGES, STAGE_LABELS } from "@/lib/types";
 import LeadDrawer from "@/components/LeadDrawer";
 import { MapPin } from "lucide-react";
@@ -21,6 +22,15 @@ export default function Board({
   onRefresh: () => void;
 }) {
   const [open, setOpen] = useState<Lead | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+
+  const soltarEm = async (st: (typeof STAGES)[number]) => {
+    if (!dragId) return;
+    const id = dragId;
+    setDragId(null);
+    await supabase.from("leads").update({ etapa: st } as never).eq("id", id);
+    onRefresh();
+  };
   const followups = leads.filter(
     (l) => l.etapa === "prospect" && l.followup_due_at && new Date(l.followup_due_at) <= new Date() && !l.followup_sent_at,
   );
@@ -49,7 +59,12 @@ export default function Board({
         {STAGES.map((st) => {
           const col = leads.filter((l) => l.etapa === st);
           return (
-            <div key={st} className="w-52 shrink-0">
+            <div
+              key={st}
+              className="w-52 shrink-0"
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => void soltarEm(st)}
+            >
               <div className={`mb-2 rounded-xl bg-gradient-to-br ${STAGE_COLOR[st]} px-3 py-2`}>
                 <span className="text-sm font-extrabold text-brand-deep">{STAGE_LABELS[st]}</span>
                 <span className="ml-2 text-xs font-bold text-brand-ink/50">{col.length}</span>
@@ -58,8 +73,11 @@ export default function Board({
                 {col.map((l) => (
                   <button
                     key={l.id}
+                    draggable
+                    onDragStart={() => setDragId(l.id)}
+                    onDragEnd={() => setDragId(null)}
                     onClick={() => setOpen(l)}
-                    className="card w-full p-2 text-left transition hover:-translate-y-0.5"
+                    className={`card w-full p-2 text-left transition hover:-translate-y-0.5 ${dragId === l.id ? "opacity-50" : ""}`}
                   >
                     <div className="flex gap-2">
                       {l.foto_url ? (
