@@ -370,7 +370,7 @@ export default function ProfilePage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-4 pb-24">
-      <CollapsibleCard title="Seu perfil de abordagem" subtitle="Quem você é, o que faz e onde atende." defaultOpen storageKey="perfil">
+      <CollapsibleCard title="Seu perfil de abordagem" subtitle="Quem você é, o que faz e onde atende." storageKey="perfil">
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-2">
             <div><span className="label">Seu nome</span><input className="input" value={f.nome} onChange={(e) => setF({ ...f, nome: e.target.value })} /></div>

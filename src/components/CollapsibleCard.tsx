@@ -14,7 +14,7 @@ export default function CollapsibleCard({
   storageKey?: string;
   children: ReactNode;
 }) {
-  const key = storageKey ? `ob:sec:${storageKey}` : null;
+  const key = storageKey ? `ob:sec2:${storageKey}` : null;
   const [open, setOpen] = useState<boolean>(() => {
     if (!key) return defaultOpen;
     try {
