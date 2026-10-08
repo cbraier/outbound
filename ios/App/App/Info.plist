@@ -26,6 +26,8 @@
 	<string>Usamos a câmera para fotografar a fachada do estabelecimento e cadastrar o lead.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Acessamos suas fotos para cadastrar o lead a partir da imagem.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Usamos o microfone para você ditar informações do seu perfil e cadastrar leads por áudio.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Usamos sua localização para registrar o endereço do estabelecimento fotografado.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
