@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { getCurrentLocation, reverseGeocode } from "@/lib/geo";
 import { socialUrl } from "@/lib/format";
+import CollapsibleCard from "@/components/CollapsibleCard";
 import { Loader2, Save, Paperclip, MapPin, X, Mic, Square, Sparkles, Copy, Send } from "lucide-react";
 
 async function blobToB64(blob: Blob): Promise<string> {
@@ -369,11 +370,7 @@ export default function ProfilePage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-4 pb-24">
-      <div className="card p-5">
-        <h2 className="text-lg font-extrabold text-brand-deep">Seu perfil de abordagem</h2>
-        <p className="mb-3 text-xs text-brand-ink/60">
-          Quanto mais o app souber sobre você, melhores as abordagens: quem você é, o que faz, onde atende, como paga, diferenciais...
-        </p>
+      <CollapsibleCard title="Seu perfil de abordagem" subtitle="Quem você é, o que faz e onde atende." defaultOpen storageKey="perfil">
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-2">
             <div><span className="label">Seu nome</span><input className="input" value={f.nome} onChange={(e) => setF({ ...f, nome: e.target.value })} /></div>
@@ -398,11 +395,9 @@ export default function ProfilePage() {
             <textarea className="input min-h-[110px]" value={f.professional_profile} onChange={(e) => setF({ ...f, professional_profile: e.target.value })} />
           </div>
         </div>
-      </div>
+      </CollapsibleCard>
 
-      <div className="card p-5">
-        <h2 className="text-lg font-extrabold text-brand-deep">Redes sociais</h2>
-        <p className="mb-3 text-xs text-brand-ink/60">Informe seus perfis (isso ajuda a entender exatamente quem você é).</p>
+      <CollapsibleCard title="Redes sociais" subtitle="Informe seus perfis — ajuda a entender quem você é." storageKey="redes">
         <div className="grid grid-cols-2 gap-2">
           {SOCIAL_KEYS.map((s) => (
             <div key={s.k}>
@@ -434,11 +429,9 @@ export default function ProfilePage() {
             </div>
           ))}
         </div>
-      </div>
+      </CollapsibleCard>
 
-      <div className="card p-5">
-        <h2 className="text-lg font-extrabold text-brand-deep">Atendimento</h2>
-        <p className="mb-3 text-xs text-brand-ink/60">Onde você atende e até quantos km se desloca.</p>
+      <CollapsibleCard title="Atendimento" subtitle="Onde você atende e até quantos km se desloca." storageKey="atendimento">
         <div className="space-y-3">
           <div>
             <span className="label">Endereço de trabalho</span>
@@ -455,15 +448,16 @@ export default function ProfilePage() {
           </div>
           <div>
             <span className="label">Região / cidades de atendimento</span>
-            <input className="input" value={f.region} onChange={(e) => setF({ ...f, region: e.target.value })} placeholder="Florianópolis, São José, Palhoça, Biguaçu, Garopaba" />
-            <p className="mt-1 text-[10px] text-brand-ink/50">A pesquisa na web fica travada nessa região — estratégia de crescimento em espiral, perto de você.</p>
+            <input className="input" value={f.region} onChange={(e) => setF({ ...f, region: e.target.value })} placeholder="Palhoça, São José, Biguaçu" />
+            <p className="mt-1 text-[10px] text-brand-ink/60">
+              <b>Separe as cidades por vírgula</b> (pode ter um espaço depois da vírgula). Ex.: <b>Palhoça, São José, Biguaçu</b>.
+              Para <b>acrescentar</b>, escreva a cidade; para <b>tirar</b>, é só apagá-la. A pesquisa na web fica <b>travada nessa região</b> (perto de você).
+            </p>
           </div>
         </div>
-      </div>
+      </CollapsibleCard>
 
-      <div className="card p-5">
-        <h2 className="text-lg font-extrabold text-brand-deep">Currículo / portfólio</h2>
-        <p className="mb-3 text-xs text-brand-ink/60">Anexe um <b>PDF ou DOCX</b>. O texto entra no contexto das abordagens.</p>
+      <CollapsibleCard title="Currículo / portfólio" subtitle="Anexe um PDF ou DOCX (entra no contexto)." storageKey="curriculo">
         <input ref={docRef} type="file" accept=".pdf,.docx" hidden onChange={(e) => { const file = e.target.files?.[0]; if (file) void onDoc(file); }} />
         <button className="btn-ghost w-full" onClick={() => docRef.current?.click()} disabled={docBusy}>
           {docBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />} {docBusy ? "Lendo..." : "Anexar documento (PDF/DOCX)"}
@@ -483,10 +477,9 @@ export default function ProfilePage() {
         ) : docName ? (
           <p className="mt-2 text-[11px] text-brand-ink/60">{docName}</p>
         ) : null}
-      </div>
+      </CollapsibleCard>
 
-      <div className="card p-5">
-        <h2 className="text-lg font-extrabold text-brand-deep">Mensagens</h2>
+      <CollapsibleCard title="Mensagens" subtitle="Mensagem fixa e a “Pesquisa” (follow-up do dia seguinte)." storageKey="mensagens">
         <div className="space-y-3">
           <div>
             <span className="label">Mensagem fixa (inicial)</span>
@@ -497,11 +490,9 @@ export default function ProfilePage() {
             <textarea className="input min-h-[150px]" value={f.followup_message} onChange={(e) => setF({ ...f, followup_message: e.target.value })} />
           </div>
         </div>
-      </div>
+      </CollapsibleCard>
 
-      <div className="card p-5">
-        <h2 className="text-lg font-extrabold text-brand-deep">Conhecer meu perfil</h2>
-        <p className="mb-2 text-xs text-brand-ink/60">O app lê o seu site/redes públicas para montar o seu perfil e sugerir o que falta.</p>
+      <CollapsibleCard title="Conhecer meu perfil" subtitle="Pesquisa na web e entrevista — para o app aprender sobre você." storageKey="conhecer">
         <label className="flex items-start gap-2 text-[11px] text-brand-ink/70">
           <input type="checkbox" checked={researchConsent} onChange={(e) => setResearchConsent(e.target.checked)} className="mt-0.5" />
           Autorizo a busca de informações públicas sobre meu perfil (meu site/redes), conforme a Política de Privacidade (LGPD).
@@ -588,10 +579,9 @@ export default function ProfilePage() {
             </div>
           )}
         </div>
-      </div>
+      </CollapsibleCard>
 
-      <div className="card p-5">
-        <h2 className="text-lg font-extrabold text-brand-deep">Elaboração de mensagens</h2>
+      <CollapsibleCard title="Elaboração de mensagens" subtitle="Provedor da IA e teste de conexão." storageKey="elaboracao">
         <div className="space-y-3">
           <div>
             <span className="label">Provedor</span>
@@ -622,7 +612,7 @@ export default function ProfilePage() {
           </button>
           {testMsg && <p className="text-[11px] font-medium text-brand-ink/80">{testMsg}</p>}
         </div>
-      </div>
+      </CollapsibleCard>
 
       <button className="btn-primary w-full" onClick={salvar} disabled={saving}>
         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
