@@ -103,6 +103,17 @@ export default function LeadDrawer({
         alert("Não deu pra salvar agora (conexão). Verifique a internet e tente de novo.\n\n" + res.error.message);
         return false;
       }
+      // Enviou a 1ª mensagem → cria o follow-up "Pesquisa" na Agenda (D+1)
+      if (etapa === "prospect" && !l.followup_due_at) {
+        await supabase.from("agenda_events").insert({
+          user_id: l.user_id,
+          titulo: `Pesquisa — ${l.nome}`,
+          tipo: "follow-up",
+          data_inicio: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          alerta_minutos: 30,
+          lead_id: l.id,
+        } as never);
+      }
       onSaved();
       return true;
     } catch (e) {
