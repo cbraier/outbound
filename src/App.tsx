@@ -6,8 +6,9 @@ import Board from "@/components/Board";
 import ProfilePage from "@/components/ProfilePage";
 import NovoLead from "@/components/NovoLead";
 import Radar from "@/components/Radar";
+import AgendaPage from "@/components/AgendaPage";
 import { type CapturedLead } from "@/components/PhotoCapture";
-import { LayoutGrid, User, LogOut, Plus, Radar as RadarIcon } from "lucide-react";
+import { LayoutGrid, User, LogOut, Plus, Radar as RadarIcon, Calendar as CalendarIcon } from "lucide-react";
 
 interface ProfileRow {
   ai_instruction: string | null;
@@ -88,7 +89,7 @@ function AuthScreen() {
 
 function Shell() {
   const { user, loading, signOut } = useAuth();
-  const [tab, setTab] = useState<"novo" | "board" | "radar" | "perfil">("novo");
+  const [tab, setTab] = useState<"novo" | "board" | "radar" | "agenda" | "perfil">("novo");
   const [leads, setLeads] = useState<Lead[]>([]);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
 
@@ -168,20 +169,24 @@ function Shell() {
             onRefresh={load}
           />
         )}
+        {tab === "agenda" && <AgendaPage />}
         {tab === "perfil" && <ProfilePage />}
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 z-30 mx-auto flex max-w-md items-center justify-around border-t border-brand-pink/10 bg-white/85 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 backdrop-blur">
-        <button onClick={() => setTab("novo")} className={`flex flex-col items-center gap-0.5 px-4 text-[11px] font-bold ${tab === "novo" ? "text-brand-pink" : "text-brand-ink/40"}`}>
+        <button onClick={() => setTab("novo")} className={`flex flex-col items-center gap-0.5 px-3 text-[11px] font-bold ${tab === "novo" ? "text-brand-pink" : "text-brand-ink/40"}`}>
           <Plus className="h-5 w-5" /> Novo
         </button>
-        <button onClick={() => setTab("board")} className={`flex flex-col items-center gap-0.5 px-4 text-[11px] font-bold ${tab === "board" ? "text-brand-pink" : "text-brand-ink/40"}`}>
+        <button onClick={() => setTab("board")} className={`flex flex-col items-center gap-0.5 px-3 text-[11px] font-bold ${tab === "board" ? "text-brand-pink" : "text-brand-ink/40"}`}>
           <LayoutGrid className="h-5 w-5" /> Funil
         </button>
-        <button onClick={() => setTab("radar")} className={`flex flex-col items-center gap-0.5 px-4 text-[11px] font-bold ${tab === "radar" ? "text-brand-pink" : "text-brand-ink/40"}`}>
+        <button onClick={() => setTab("radar")} className={`flex flex-col items-center gap-0.5 px-3 text-[11px] font-bold ${tab === "radar" ? "text-brand-pink" : "text-brand-ink/40"}`}>
           <RadarIcon className="h-5 w-5" /> Radar
         </button>
-        <button onClick={() => setTab("perfil")} className={`flex flex-col items-center gap-0.5 px-4 text-[11px] font-bold ${tab === "perfil" ? "text-brand-pink" : "text-brand-ink/40"}`}>
+        <button onClick={() => setTab("agenda")} className={`flex flex-col items-center gap-0.5 px-3 text-[11px] font-bold ${tab === "agenda" ? "text-brand-pink" : "text-brand-ink/40"}`}>
+          <CalendarIcon className="h-5 w-5" /> Agenda
+        </button>
+        <button onClick={() => setTab("perfil")} className={`flex flex-col items-center gap-0.5 px-3 text-[11px] font-bold ${tab === "perfil" ? "text-brand-pink" : "text-brand-ink/40"}`}>
           <User className="h-5 w-5" /> Perfil
         </button>
       </nav>
