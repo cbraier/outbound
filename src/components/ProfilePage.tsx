@@ -276,7 +276,17 @@ export default function ProfilePage() {
       body: {
         action: "interview",
         history: log,
-        context: { nome: f.nome, company: f.company, site: f.site, trabalho: f.ai_instruction, perfil: f.professional_profile },
+        context: {
+          nome: f.nome,
+          empresa: f.company,
+          site: f.site,
+          redes: f.socials,
+          endereco_atendimento: f.work_address,
+          raio_km: f.radius_km,
+          sobre_o_negocio: f.ai_instruction,
+          perfil_profissional: f.professional_profile,
+          curriculo: (f.resume_text || "").slice(0, 3000),
+        },
       },
     });
     if (error) throw error;
@@ -482,55 +492,6 @@ export default function ProfilePage() {
       </div>
 
       <div className="card p-5">
-        <h2 className="text-lg font-extrabold text-brand-deep">Entrevista com o app</h2>
-        <p className="mb-3 text-xs text-brand-ink/60">
-          O app te entrevista para entender o seu negócio e o que você vende — responda por texto ou voz (🎤). É assim que ele aprende a prospectar por você (vendas porta a porta e WhatsApp a WhatsApp).
-        </p>
-
-        {interviewLog.length === 0 && !interviewQ && (
-          <button className="btn-primary w-full" onClick={iniciarEntrevista} disabled={interviewing}>
-            {interviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mic className="h-4 w-4" />} Iniciar entrevista
-          </button>
-        )}
-
-        {interviewLog.length > 0 && (
-          <div className="mb-3 space-y-2">
-            {interviewLog.map((h, i) => (
-              <div key={i} className="space-y-1">
-                <p className="text-[12px] font-bold text-brand-deep">{h.q}</p>
-                <p className="rounded-lg bg-brand-pink/10 px-3 py-1.5 text-[12px] text-brand-ink/80">{h.a}</p>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {interviewQ && !interviewDone && (
-          <div className="space-y-2 rounded-xl border border-brand-purple/20 bg-white/60 p-3">
-            <p className="text-[13px] font-bold text-brand-deep">{interviewQ}</p>
-            <div className="flex items-center justify-between">
-              <span className="label">Sua resposta</span>
-              <MicInto onText={(t) => setInterviewA((p) => (p ? p + " " + t : t))} />
-            </div>
-            <textarea className="input min-h-[80px]" value={interviewA} onChange={(e) => setInterviewA(e.target.value)} placeholder="Digite ou dite sua resposta..." />
-            <button className="btn-primary w-full" onClick={responderEntrevista} disabled={interviewing || !interviewA.trim()}>
-              {interviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Enviar resposta
-            </button>
-          </div>
-        )}
-
-        {interviewDone && (
-          <div className="mt-2 rounded-xl border border-brand-money/40 bg-brand-money/5 p-3">
-            <p className="text-[12px] font-bold text-brand-deep">Entrevista concluída! Perfil montado:</p>
-            <p className="mt-1 max-h-32 overflow-y-auto whitespace-pre-wrap text-[11px] text-brand-ink/70">{interviewPerfil}</p>
-            <div className="mt-2 flex gap-2">
-              <button className="btn-primary flex-1" onClick={() => { setF((p) => ({ ...p, professional_profile: interviewPerfil })); alert("Perfil aplicado!"); }}>Aplicar ao meu perfil</button>
-              <button className="btn-ghost" onClick={iniciarEntrevista} disabled={interviewing}>Recomeçar</button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="card p-5">
         <h2 className="text-lg font-extrabold text-brand-deep">Conhecer meu perfil</h2>
         <p className="mb-2 text-xs text-brand-ink/60">O app lê o seu site/redes públicas para montar o seu perfil e sugerir o que falta.</p>
         <label className="flex items-start gap-2 text-[11px] text-brand-ink/70">
@@ -566,6 +527,55 @@ export default function ProfilePage() {
             </button>
           </div>
         )}
+
+        <div className="mt-4 space-y-2 border-t border-brand-purple/15 pt-3">
+          <h3 className="text-base font-extrabold text-brand-deep">Entrevista (responda por texto ou voz 🎤)</h3>
+          <p className="text-[11px] text-brand-ink/60">
+            Umas poucas perguntas objetivas e o app monta o seu perfil para prospectar por você (porta a porta e WhatsApp a WhatsApp).
+          </p>
+
+          {interviewLog.length === 0 && !interviewQ && (
+            <button className="btn-primary w-full" onClick={iniciarEntrevista} disabled={interviewing}>
+              {interviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mic className="h-4 w-4" />} Iniciar entrevista
+            </button>
+          )}
+
+          {interviewLog.length > 0 && (
+            <div className="space-y-2">
+              {interviewLog.map((h, i) => (
+                <div key={i} className="space-y-1">
+                  <p className="text-[12px] font-bold text-brand-deep">{h.q}</p>
+                  <p className="rounded-lg bg-brand-pink/10 px-3 py-1.5 text-[12px] text-brand-ink/80">{h.a}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {interviewQ && !interviewDone && (
+            <div className="space-y-2 rounded-xl border border-brand-purple/20 bg-white/60 p-3">
+              <p className="text-[13px] font-bold text-brand-deep">{interviewQ}</p>
+              <div className="flex items-center justify-between">
+                <span className="label">Sua resposta</span>
+                <MicInto onText={(t) => setInterviewA((p) => (p ? p + " " + t : t))} />
+              </div>
+              <textarea className="input min-h-[80px]" value={interviewA} onChange={(e) => setInterviewA(e.target.value)} placeholder="Digite ou dite sua resposta..." />
+              <button className="btn-primary w-full" onClick={responderEntrevista} disabled={interviewing || !interviewA.trim()}>
+                {interviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Enviar resposta
+              </button>
+            </div>
+          )}
+
+          {interviewDone && (
+            <div className="rounded-xl border border-brand-money/40 bg-brand-money/5 p-3">
+              <p className="text-[12px] font-bold text-brand-deep">Perfil montado:</p>
+              <p className="mt-1 max-h-32 overflow-y-auto whitespace-pre-wrap text-[11px] text-brand-ink/70">{interviewPerfil}</p>
+              <div className="mt-2 flex gap-2">
+                <button className="btn-primary flex-1" onClick={() => { setF((p) => ({ ...p, professional_profile: interviewPerfil })); alert("Perfil aplicado!"); }}>Aplicar ao meu perfil</button>
+                <button className="btn-ghost" onClick={iniciarEntrevista} disabled={interviewing}>Recomeçar</button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="card p-5">
