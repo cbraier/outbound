@@ -2,7 +2,7 @@ import { Capacitor } from "@capacitor/core";
 
 export const isNative = () => Capacitor.isNativePlatform();
 const KEY = import.meta.env.VITE_REVENUECAT_IOS_KEY as string | undefined;
-const ENTITLEMENT = "pro";
+const ENTITLEMENT = "outbound_sales_pro";
 
 export async function initBilling(userId?: string | null) {
   if (!isNative() || !KEY) return;

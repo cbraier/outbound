@@ -7,7 +7,7 @@ import ProfilePage from "@/components/ProfilePage";
 import NovoLead from "@/components/NovoLead";
 import Landing from "@/components/Landing";
 import Paywall from "@/components/Paywall";
-import { initBilling, hasActiveEntitlement } from "@/lib/billing";
+import { initBilling, hasActiveEntitlement, getCurrentOffering } from "@/lib/billing";
 import Radar from "@/components/Radar";
 import AgendaPage from "@/components/AgendaPage";
 import { type CapturedLead } from "@/components/PhotoCapture";
@@ -153,6 +153,8 @@ function Shell() {
   const [agendaFocus, setAgendaFocus] = useState<Date | null>(null);
   const [showAuth, setShowAuth] = useState(false);
   const [entitled, setEntitled] = useState<boolean | null>(null);
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [profile, setProfile] = useState<ProfileRow | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -164,12 +166,17 @@ function Shell() {
     (async () => {
       await initBilling(user.id);
       const ok = await hasActiveEntitlement();
-      if (alive) setEntitled(ok);
+      if (ok) {
+        if (alive) setEntitled(true);
+        return;
+      }
+      // Fail-open: só bloqueia se houver uma oferta comprável disponível (senão o usuário ficaria preso)
+      const off = await getCurrentOffering();
+      const ready = !!off?.availablePackages?.length;
+      if (alive) setEntitled(!ready);
     })();
     return () => { alive = false; };
   }, [user?.id, profile?.full_access]);
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [profile, setProfile] = useState<ProfileRow | null>(null);
 
   const load = useCallback(async () => {
     if (!user) return;
