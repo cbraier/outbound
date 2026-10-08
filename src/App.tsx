@@ -6,6 +6,8 @@ import Board from "@/components/Board";
 import ProfilePage from "@/components/ProfilePage";
 import NovoLead from "@/components/NovoLead";
 import Landing from "@/components/Landing";
+import Paywall from "@/components/Paywall";
+import { initBilling, hasActiveEntitlement } from "@/lib/billing";
 import Radar from "@/components/Radar";
 import AgendaPage from "@/components/AgendaPage";
 import { type CapturedLead } from "@/components/PhotoCapture";
@@ -98,6 +100,18 @@ function Shell() {
   const [tab, setTab] = useState<"novo" | "board" | "radar" | "agenda" | "perfil">("novo");
   const [agendaFocus, setAgendaFocus] = useState<Date | null>(null);
   const [showAuth, setShowAuth] = useState(false);
+  const [entitled, setEntitled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    let alive = true;
+    (async () => {
+      await initBilling(user.id);
+      const ok = await hasActiveEntitlement();
+      if (alive) setEntitled(ok);
+    })();
+    return () => { alive = false; };
+  }, [user?.id]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
 
@@ -150,13 +164,17 @@ function Shell() {
 
   if (loading) return <div className="flex min-h-full items-center justify-center">Carregando...</div>;
   if (!user) return showAuth ? <AuthScreen onBack={() => setShowAuth(false)} /> : <Landing onStart={() => setShowAuth(true)} />;
+  if (entitled === false) return <Paywall onDone={() => setEntitled(true)} onSignOut={signOut} />;
 
   return (
     <div className="min-h-full pb-20">
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-brand-pink/10 bg-white/70 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] backdrop-blur">
         <h1 className="text-lg font-extrabold tracking-tight text-brand-deep">Outbound Sales</h1>
-        <button onClick={signOut} className="rounded-full p-2 text-brand-ink/50 hover:bg-black/5" title="Sair">
-          <LogOut className="h-4.5 w-4.5" />
+        <button
+          onClick={signOut}
+          className="flex items-center gap-1.5 rounded-full border border-brand-purple/20 px-3 py-1.5 text-xs font-bold text-brand-ink/70 hover:bg-black/5"
+        >
+          Sair <LogOut className="h-3.5 w-3.5" />
         </button>
       </header>
 
