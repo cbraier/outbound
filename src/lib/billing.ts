@@ -49,3 +49,38 @@ export async function restore(): Promise<boolean> {
   const { customerInfo } = await Purchases.restorePurchases();
   return !!customerInfo.entitlements.active[ENTITLEMENT];
 }
+
+// Compra de CONSUMÍVEL (pacote de Doods). O crédito entra pela conta via webhook do RevenueCat.
+export async function purchaseDoods(storeProductId: string): Promise<{ ok: boolean; error?: string }> {
+  if (!isNative()) return { ok: false, error: "Compra disponível apenas no app." };
+  try {
+    const { Purchases, PRODUCT_CATEGORY } = await import("@revenuecat/purchases-capacitor");
+    let product = null;
+    try {
+      const { products } = await Purchases.getProducts({
+        productIdentifiers: [storeProductId],
+        type: PRODUCT_CATEGORY.NON_SUBSCRIPTION,
+      });
+      product = products?.[0] || null;
+    } catch {
+      product = null;
+    }
+    if (product) {
+      await Purchases.purchaseStoreProduct({ product });
+      return { ok: true };
+    }
+    // Fallback: pacote anexado a uma offering (compatível com configurações antigas).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { current } = await Purchases.getOfferings() as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pkgs: any[] = current?.availablePackages || [];
+    const pkg = pkgs.find((p) => p?.product?.identifier === storeProductId);
+    if (!pkg) return { ok: false, error: "Produto indisponível no momento. Confira a conexão e tente de novo." };
+    await Purchases.purchasePackage({ aPackage: pkg });
+    return { ok: true };
+  } catch (e) {
+    const err = e as { userCancelled?: boolean; message?: string };
+    if (err?.userCancelled) return { ok: false, error: "Compra cancelada." };
+    return { ok: false, error: err?.message || "Falha na compra." };
+  }
+}

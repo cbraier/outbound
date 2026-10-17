@@ -1,8 +1,11 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { chargeDood, getWallet, priceOf, type DoodPrice } from "@/lib/dood";
 import PhotoCapture, { type CapturedLead } from "@/components/PhotoCapture";
+import LeadDrawer from "@/components/LeadDrawer";
+import { type Lead } from "@/lib/types";
 import { maskPhone, phoneDigits, withHttps, maskCep, lookupCep } from "@/lib/format";
-import { Mic, Square, PenLine, Camera, ImageUp, Loader2, Plus } from "lucide-react";
+import { Mic, Square, PenLine, Camera, ImageUp, Loader2, Plus, CheckCircle2 } from "lucide-react";
 
 const EMPTY = {
   contato: "",
@@ -27,16 +30,48 @@ async function blobToB64(blob: Blob): Promise<string> {
   });
 }
 
-export default function NovoLead({ userId, onCaptured }: { userId: string; onCaptured: (c: CapturedLead) => void | Promise<void> }) {
+export default function NovoLead({
+  userId,
+  onCaptured,
+  profile,
+  onRefresh,
+}: {
+  userId: string;
+  onCaptured: (c: CapturedLead) => Lead | null | Promise<Lead | null>;
+  profile: Parameters<typeof LeadDrawer>[0]["profile"] | null;
+  onRefresh?: () => void;
+}) {
   const [mode, setMode] = useState<"camera" | "imagem" | "audio" | "manual">("camera");
   const [f, setF] = useState(EMPTY);
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [created, setCreated] = useState<Lead | null>(null);
+  const [openCreated, setOpenCreated] = useState(false);
   const recRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const [balance, setBalance] = useState(0);
+  const [pricing, setPricing] = useState<DoodPrice[]>([]);
+
+  const refreshWallet = async () => {
+    const w = await getWallet(true);
+    setBalance(w.balance);
+    setPricing(w.pricing);
+  };
+  useEffect(() => { void refreshWallet(); }, []);
+
+  const visionCost = priceOf(pricing, "lead_vision");
+  const audioCost = priceOf(pricing, "lead_audio");
+  const loaded = pricing.length > 0;
+  const canVision = !loaded || balance >= visionCost;
+  const canAudio = !loaded || balance >= audioCost;
+
+  const handleCaptured = async (c: CapturedLead) => {
+    const l = await onCaptured(c);
+    if (l) { setCreated(l); void refreshWallet(); }
+  };
 
   const aplicarExtraido = async (ext: Record<string, unknown>) => {
-    await onCaptured({
+    await handleCaptured({
       nome: (ext.nome as string) || undefined,
       telefone: ((ext.celular as string) || (ext.telefone as string) || undefined)?.replace(/\D/g, "") || undefined,
       rede_social: (ext.rede_social as string) || undefined,
@@ -61,6 +96,11 @@ export default function NovoLead({ userId, onCaptured }: { userId: string; onCap
         stream.getTracks().forEach((t) => t.stop());
         setBusy(true);
         try {
+          const ch = await chargeDood("lead_audio");
+          if (!ch.ok) {
+            alert("Sem Doods suficientes para o áudio. Recarregue na aba Dood's.");
+            return;
+          }
           const blob = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
           const b64 = await blobToB64(blob);
           const { data, error } = await supabase.functions.invoke("ai-message", { body: { audio_base64: b64, audio_mime: blob.type } });
@@ -102,7 +142,7 @@ export default function NovoLead({ userId, onCaptured }: { userId: string; onCap
     }
     const endereco = [f.rua, f.numero, f.bairro, f.cidade].filter(Boolean).join(", ");
     try {
-      await onCaptured({
+      await handleCaptured({
         contato: f.contato || undefined,
         nome: f.nome || f.contato,
         telefone: phoneDigits(f.telefone) || undefined,
@@ -132,7 +172,37 @@ export default function NovoLead({ userId, onCaptured }: { userId: string; onCap
   return (
     <div className="mx-auto max-w-md space-y-4">
       <h2 className="text-center text-lg font-extrabold text-brand-deep">Cadastre seu Lead</h2>
+      {loaded && (!canVision || !canAudio) && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-[12px] leading-snug text-amber-800">
+          Você está sem <b>Doods</b> para as funções com IA (Foto, Imagem e Áudio). Recarregue na aba <b>Dood's</b> — ou use o <b>Manual</b>, que é livre.
+        </div>
+      )}
 
+      {created ? (
+        <div className="card p-5 space-y-3">
+          <div className="flex items-center gap-2 text-sm font-bold text-brand-money">
+            <CheckCircle2 className="h-4 w-4" /> Lead criado! Já está no Funil.
+          </div>
+          {created.foto_url && (
+            <img src={created.foto_url} alt="" className="h-40 w-full rounded-2xl border border-brand-pink/20 object-cover" />
+          )}
+          <div>
+            <p className="text-lg font-extrabold text-brand-deep">{created.nome}</p>
+            <p className="text-xs text-brand-ink/60">
+              {[created.categoria, created.telefone, created.cidade || created.endereco].filter(Boolean).join(" · ")}
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <button className="btn-primary flex-1" onClick={() => setOpenCreated(true)}>
+              Abrir lead
+            </button>
+            <button className="btn-ghost" onClick={() => { setCreated(null); setMode("camera"); }}>
+              Novo
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
       <div className="flex gap-1.5">
         {MODES.map(({ v, label, Icon }) => (
           <button
@@ -152,7 +222,7 @@ export default function NovoLead({ userId, onCaptured }: { userId: string; onCap
           <>
             <h3 className="mb-1 text-base font-extrabold text-brand-deep">Foto da fachada</h3>
             <p className="mb-3 text-xs text-brand-ink/60">Tire a foto e o lead é criado automaticamente.</p>
-            <PhotoCapture userId={userId} onCaptured={onCaptured} only="camera" />
+            <PhotoCapture userId={userId} onCaptured={handleCaptured} only="camera" disabled={!canVision} />
           </>
         )}
 
@@ -160,7 +230,7 @@ export default function NovoLead({ userId, onCaptured }: { userId: string; onCap
           <>
             <h3 className="mb-1 text-base font-extrabold text-brand-deep">Escolher da galeria</h3>
             <p className="mb-3 text-xs text-brand-ink/60">Escolha uma foto que você já tirou (mesmo sem internet).</p>
-            <PhotoCapture userId={userId} onCaptured={onCaptured} only="file" />
+            <PhotoCapture userId={userId} onCaptured={handleCaptured} only="file" disabled={!canVision} />
           </>
         )}
 
@@ -168,7 +238,7 @@ export default function NovoLead({ userId, onCaptured }: { userId: string; onCap
           <>
             <h3 className="mb-1 text-base font-extrabold text-brand-deep">Cadastrar por áudio</h3>
             <p className="mb-4 text-xs text-brand-ink/60">Fale os dados do estabelecimento e o cadastro é preenchido.</p>
-            <button className={recording ? "btn-ghost w-full" : "btn-primary w-full"} onClick={recording ? stopRec : startRec} disabled={busy}>
+            <button className={recording ? "btn-ghost w-full" : "btn-primary w-full"} onClick={recording ? stopRec : startRec} disabled={busy || !canAudio}>
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : recording ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
               {busy ? "Processando..." : recording ? "Parar e enviar" : "Gravar áudio"}
             </button>
@@ -205,6 +275,22 @@ export default function NovoLead({ userId, onCaptured }: { userId: string; onCap
           </>
         )}
       </div>
+        </>
+      )}
+
+      {created && openCreated && profile && (
+        <LeadDrawer
+          lead={created}
+          profile={profile}
+          onClose={() => setOpenCreated(false)}
+          onSaved={async () => {
+            setOpenCreated(false);
+            const { data } = await supabase.from("leads").select("*").eq("id", created.id).single();
+            if (data) setCreated(data as Lead);
+            onRefresh?.();
+          }}
+        />
+      )}
     </div>
   );
 }

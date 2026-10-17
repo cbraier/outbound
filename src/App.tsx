@@ -11,9 +11,13 @@ import { initBilling, hasActiveEntitlement, getCurrentOffering, isNative } from 
 import Radar from "@/components/Radar";
 import AgendaPage from "@/components/AgendaPage";
 import { type CapturedLead } from "@/components/PhotoCapture";
-import { LayoutGrid, User, LogOut, Plus, Radar as RadarIcon, Calendar as CalendarIcon, Eye, EyeOff } from "lucide-react";
+import { LayoutGrid, User, LogOut, Plus, Radar as RadarIcon, Calendar as CalendarIcon, Eye, EyeOff, Coins, FileText } from "lucide-react";
+import DoodsPage from "@/components/DoodsPage";
+import ProposalPage from "@/components/ProposalPage";
 
 interface ProfileRow {
+  nome: string | null;
+  company: string | null;
   ai_instruction: string | null;
   professional_profile: string | null;
   fixed_message: string | null;
@@ -27,6 +31,7 @@ interface ProfileRow {
   work_lng?: number | null;
   radius_km?: number | null;
   resume_text?: string | null;
+  resume_summary?: string | null;
   full_access?: boolean | null;
   region?: string | null;
 }
@@ -35,11 +40,13 @@ function contextoDePerfil(p: ProfileRow): string | null {
   const parts: string[] = [];
   if (p.professional_profile) parts.push(p.professional_profile);
   const s = p.socials || {};
-  const redes = Object.entries(s).filter(([, v]) => v && String(v).trim()).map(([k, v]) => `${k}: ${v}`).join(", ");
+  const redes = Object.entries(s).filter(([k, v]) => !k.startsWith("_") && v && String(v).trim()).map(([k, v]) => `${k}: ${v}`).join(", ");
   if (redes) parts.push(`Redes sociais: ${redes}`);
   if (p.site) parts.push(`Site: ${p.site}`);
-  if (p.work_address) parts.push(`Atende em: ${p.work_address}${p.radius_km ? ` (raio de ${p.radius_km} km)` : ""}`);
-  if (p.resume_text) parts.push(`Currículo/portfólio (resumo do documento):\n${p.resume_text.slice(0, 4000)}`);
+  // NÃO enviamos o endereço/região do vendedor: isso é só para a Descoberta.
+  // Enviá-lo fazia a IA usar a cidade do vendedor como se fosse a do prospect.
+  if (p.resume_summary) parts.push(`Diferenciais do vendedor (extraídos do currículo — use quando fizer sentido para o segmento do prospect):\n${p.resume_summary}`);
+  if (p.resume_text) parts.push(`Currículo/portfólio (texto completo):\n${p.resume_text.slice(0, 12000)}`);
   return parts.length ? parts.join("\n") : p.professional_profile;
 }
 
@@ -62,7 +69,7 @@ function AuthScreen({ onBack }: { onBack?: () => void }) {
       const res = mode === "in" ? await signIn(email, password) : await signUp(email, password, nome);
       if (res.error) setErr(res.error);
       else if ("needsConfirm" in res && res.needsConfirm)
-        setInfo(`Enviamos um e-mail de confirmação para ${email}. Confirme e depois toque em "Entrar".`);
+        setInfo(`Enviamos um e-mail de confirmação para ${email}. Se não aparecer em alguns minutos, confira a caixa de Spam e marque "não é spam". Depois toque em "Entrar".`);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Erro inesperado.");
     } finally {
@@ -93,6 +100,11 @@ function AuthScreen({ onBack }: { onBack?: () => void }) {
             </div>
           </div>
         </div>
+        {mode === "up" && (
+          <p className="mt-3 rounded-lg bg-amber-50 px-2.5 py-2 text-[11px] leading-snug text-amber-700">
+            O e-mail de confirmação pode cair na caixa de <b>Spam</b>. Se não achar em alguns minutos, confira lá e marque como "não é spam".
+          </p>
+        )}
         {err && <p className="mt-2 text-xs text-red-500">{err}</p>}
         {info && <p className="mt-2 text-xs font-semibold text-brand-ink">{info}</p>}
         <button className="btn-primary mt-4 w-full" onClick={submit} disabled={busy || !email || !password}>
@@ -164,7 +176,7 @@ function NewPasswordScreen() {
 
 function Shell() {
   const { user, loading, signOut, recovery } = useAuth();
-  const [tab, setTab] = useState<"novo" | "board" | "radar" | "agenda" | "perfil">("novo");
+  const [tab, setTab] = useState<"novo" | "proposta" | "board" | "radar" | "agenda" | "perfil" | "dood">("novo");
   const [agendaFocus, setAgendaFocus] = useState<Date | null>(null);
   const [showAuth, setShowAuth] = useState(false);
   const [entitled, setEntitled] = useState<boolean | null>(null);
@@ -173,6 +185,7 @@ function Shell() {
 
   useEffect(() => {
     if (!user) return;
+    if (import.meta.env.VITE_FORCE_PAYWALL === "1") { setEntitled(false); return; }
     if (profile?.full_access) {
       setEntitled(true);
       return;
@@ -204,7 +217,7 @@ function Shell() {
     if (!prof) {
       const nome = (user.user_metadata?.nome as string) || null;
       await supabase.from("profiles").upsert({ user_id: user.id, email: user.email, nome }, { onConflict: "user_id" });
-      prof = { ai_instruction: null, professional_profile: null, fixed_message: null, ai_provider: null, ai_api_key: null, site: null };
+      prof = { nome, company: null, ai_instruction: null, professional_profile: null, fixed_message: null, ai_provider: null, ai_api_key: null, site: null };
     }
     setProfile(prof);
   }, [user?.id]);
@@ -213,9 +226,9 @@ function Shell() {
     void load();
   }, [load]);
 
-  const onCaptured = async (c: CapturedLead) => {
-    if (!user) return;
-    const { error } = await supabase.from("leads").insert({
+  const onCaptured = async (c: CapturedLead): Promise<Lead | null> => {
+    if (!user) return null;
+    const { data, error } = await supabase.from("leads").insert({
       user_id: user.id,
       nome: c.nome || c.contato || "Sem nome",
       contato: c.contato || null,
@@ -236,19 +249,22 @@ function Shell() {
       lat: c.lat ?? null,
       lng: c.lng ?? null,
       etapa: "lead",
-    } as never);
+    } as never).select("*").single();
     if (error) throw new Error(error.message);
     await load();
+    return data as Lead;
   };
 
   if (loading) return <div className="flex min-h-full items-center justify-center">Carregando...</div>;
+  if (import.meta.env.VITE_FORCE_PAYWALL === "1") return <Paywall onDone={() => {}} />;
   if (recovery) return <NewPasswordScreen />;
   if (!user) {
     const native = isNative();
     if (native || showAuth) return <AuthScreen onBack={native ? undefined : () => setShowAuth(false)} />;
     return <Landing onStart={() => setShowAuth(true)} />;
   }
-  if (entitled === false) return <Paywall onDone={() => setEntitled(true)} onSignOut={signOut} />;
+  // Paywall de assinatura ANTIGO desativado — o modelo agora é de créditos (Doods).
+  // if (entitled === false) return <Paywall onDone={() => setEntitled(true)} onSignOut={signOut} />;
 
   return (
     <div className="min-h-full pb-20">
@@ -263,7 +279,17 @@ function Shell() {
       </header>
 
       <main className="p-4">
-        {tab === "novo" && <NovoLead userId={user.id} onCaptured={onCaptured} />}
+        {tab === "novo" && (
+          <NovoLead
+            userId={user.id}
+            onCaptured={onCaptured}
+            profile={profile ? { ...profile, professional_profile: contextoDePerfil(profile) } : null}
+            onRefresh={load}
+          />
+        )}
+        {tab === "proposta" && (
+          <ProposalPage userId={user.id} profile={profile} onGoToDoods={() => setTab("dood")} onRefresh={load} />
+        )}
         {tab === "board" && (
           <Board
             leads={leads}
@@ -275,29 +301,35 @@ function Shell() {
         {tab === "radar" && (
           <Radar
             leads={leads}
-            center={profile?.work_lat != null && profile?.work_lng != null ? { lat: profile.work_lat, lng: profile.work_lng } : null}
             profile={profile ? { ...profile, professional_profile: contextoDePerfil(profile) } : null}
             onRefresh={load}
           />
         )}
         {tab === "agenda" && <AgendaPage focus={agendaFocus} />}
-        {tab === "perfil" && <ProfilePage />}
+        {tab === "perfil" && <ProfilePage onRefresh={load} />}
+        {tab === "dood" && <DoodsPage />}
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 z-30 mx-auto flex max-w-md items-center justify-around border-t border-brand-pink/10 bg-white/85 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 backdrop-blur">
-        <button onClick={() => setTab("novo")} className={`flex flex-col items-center gap-0.5 px-3 text-[11px] font-bold ${tab === "novo" ? "text-brand-pink" : "text-brand-ink/40"}`}>
+        <button onClick={() => setTab("novo")} className={`flex flex-col items-center gap-0.5 px-2 text-[10px] font-bold ${tab === "novo" ? "text-brand-pink" : "text-brand-ink/40"}`}>
           <Plus className="h-5 w-5" /> Novo
         </button>
-        <button onClick={() => setTab("board")} className={`flex flex-col items-center gap-0.5 px-3 text-[11px] font-bold ${tab === "board" ? "text-brand-pink" : "text-brand-ink/40"}`}>
+        <button onClick={() => setTab("proposta")} className={`flex flex-col items-center gap-0.5 px-2 text-[10px] font-bold ${tab === "proposta" ? "text-brand-pink" : "text-brand-ink/40"}`}>
+          <FileText className="h-5 w-5" /> Proposta
+        </button>
+        <button onClick={() => setTab("board")} className={`flex flex-col items-center gap-0.5 px-2 text-[10px] font-bold ${tab === "board" ? "text-brand-pink" : "text-brand-ink/40"}`}>
           <LayoutGrid className="h-5 w-5" /> Funil
         </button>
-        <button onClick={() => setTab("radar")} className={`flex flex-col items-center gap-0.5 px-3 text-[11px] font-bold ${tab === "radar" ? "text-brand-pink" : "text-brand-ink/40"}`}>
+        <button onClick={() => setTab("radar")} className={`flex flex-col items-center gap-0.5 px-2 text-[10px] font-bold ${tab === "radar" ? "text-brand-pink" : "text-brand-ink/40"}`}>
           <RadarIcon className="h-5 w-5" /> Radar
         </button>
-        <button onClick={() => setTab("agenda")} className={`flex flex-col items-center gap-0.5 px-3 text-[11px] font-bold ${tab === "agenda" ? "text-brand-pink" : "text-brand-ink/40"}`}>
+        <button onClick={() => setTab("agenda")} className={`flex flex-col items-center gap-0.5 px-2 text-[10px] font-bold ${tab === "agenda" ? "text-brand-pink" : "text-brand-ink/40"}`}>
           <CalendarIcon className="h-5 w-5" /> Agenda
         </button>
-        <button onClick={() => setTab("perfil")} className={`flex flex-col items-center gap-0.5 px-3 text-[11px] font-bold ${tab === "perfil" ? "text-brand-pink" : "text-brand-ink/40"}`}>
+        <button onClick={() => setTab("dood")} className={`flex flex-col items-center gap-0.5 px-2 text-[10px] font-bold ${tab === "dood" ? "text-brand-pink" : "text-brand-ink/40"}`}>
+          <Coins className="h-5 w-5" /> Dood's
+        </button>
+        <button onClick={() => setTab("perfil")} className={`flex flex-col items-center gap-0.5 px-2 text-[10px] font-bold ${tab === "perfil" ? "text-brand-pink" : "text-brand-ink/40"}`}>
           <User className="h-5 w-5" /> Perfil
         </button>
       </nav>

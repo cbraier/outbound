@@ -46,3 +46,32 @@ body {
 .label {
   @apply text-[11px] font-semibold uppercase tracking-wider text-brand-ink/70;
 }
+
+@keyframes gemini-shimmer {
+  0% { background-position: 200% 50%; }
+  100% { background-position: -200% 50%; }
+}
+
+.gemini-bar {
+  height: 6px;
+  border-radius: 9999px;
+  background-image: linear-gradient(
+    90deg,
+    rgba(255, 95, 162, 0),
+    #ff5fa2 25%,
+    #a855f7 50%,
+    #38bdf8 75%,
+    rgba(56, 189, 248, 0)
+  );
+  background-size: 200% 100%;
+  animation: gemini-shimmer 1.5s linear infinite;
+}
+
+.gemini-text {
+  background-image: linear-gradient(90deg, #a855f7, #ff5fa2, #38bdf8, #a855f7);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: gemini-shimmer 2.2s linear infinite;
+}

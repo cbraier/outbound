@@ -2,7 +2,7 @@ import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { type Lead, STAGES, STAGE_LABELS } from "@/lib/types";
 import LeadDrawer from "@/components/LeadDrawer";
-import { MapPin, ArrowRightLeft } from "lucide-react";
+import { MapPin, ArrowRightLeft, Trash2 } from "lucide-react";
 
 const STAGE_COLOR: Record<string, string> = {
   lead: "from-brand-sky/30 to-brand-sky/10",
@@ -27,13 +27,13 @@ export default function Board({
   const [dragId, setDragId] = useState<string | null>(null);
   const [moveLead, setMoveLead] = useState<Lead | null>(null);
   const [q, setQ] = useState("");
-  const [tagF, setTagF] = useState<string | null>(null);
 
-  const allTags = Array.from(new Set(leads.flatMap((l) => l.tags || []))).sort();
+  const ql = q.trim().toLowerCase();
   const filtered = leads.filter((l) => {
-    const okName = q.trim() ? (l.nome || "").toLowerCase().includes(q.trim().toLowerCase()) : true;
-    const okTag = tagF ? (l.tags || []).includes(tagF) : true;
-    return okName && okTag;
+    if (!ql) return true;
+    const byName = (l.nome || "").toLowerCase().includes(ql);
+    const byTag = (l.tags || []).some((t) => t.toLowerCase().includes(ql));
+    return byName || byTag;
   });
 
   const soltarEm = async (st: (typeof STAGES)[number]) => {
@@ -51,6 +51,16 @@ export default function Board({
     await supabase.from("leads").update({ etapa: st } as never).eq("id", id);
     onRefresh();
   };
+
+  const excluir = async (l: Lead) => {
+    if (!confirm(`Excluir “${l.nome || "Sem nome"}”? Não dá pra desfazer.`)) return;
+    const { error } = await supabase.from("leads").delete().eq("id", l.id);
+    if (error) {
+      alert("Erro ao excluir: " + error.message);
+      return;
+    }
+    onRefresh();
+  };
   const followups = filtered.filter(
     (l) => l.etapa === "prospect" && l.followup_due_at && new Date(l.followup_due_at) <= new Date() && !l.followup_sent_at,
   );
@@ -61,31 +71,12 @@ export default function Board({
         <div className="relative">
           <MapPin className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-brand-ink/30" />
           <input
-            className="input pl-9"
+            className="input !pl-9"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Buscar por nome..."
           />
         </div>
-        {allTags.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            <button
-              onClick={() => setTagF(null)}
-              className={`rounded-full px-3 py-1 text-[11px] font-bold ${!tagF ? "bg-brand-deep text-white" : "border border-brand-purple/20 text-brand-ink/60"}`}
-            >
-              Todas
-            </button>
-            {allTags.map((t) => (
-              <button
-                key={t}
-                onClick={() => setTagF(tagF === t ? null : t)}
-                className={`rounded-full px-3 py-1 text-[11px] font-bold ${tagF === t ? "bg-brand-pink text-white" : "border border-brand-purple/20 text-brand-ink/60"}`}
-              >
-                #{t}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
 
       {followups.length > 0 && (
@@ -106,13 +97,14 @@ export default function Board({
           </div>
         </div>
       )}
-      <div className="flex gap-3 overflow-x-auto pb-2">
+      <p className="mb-1 text-center text-[11px] text-brand-ink/50">Deslize para o lado para ver as etapas →</p>
+      <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2">
         {STAGES.map((st) => {
           const col = filtered.filter((l) => l.etapa === st);
           return (
             <div
               key={st}
-              className="w-52 shrink-0"
+              className="w-[85vw] max-w-[340px] shrink-0 snap-center"
               onDragOver={(e) => e.preventDefault()}
               onDrop={() => void soltarEm(st)}
             >
@@ -151,6 +143,13 @@ export default function Board({
                       title="Mover para outra etapa"
                     >
                       <ArrowRightLeft className="h-3.5 w-3.5 text-brand-ink/40" />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); void excluir(l); }}
+                      className="absolute bottom-1 right-1 rounded-full p-1.5 hover:bg-red-50"
+                      title="Excluir lead"
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-red-400" />
                     </button>
                   </div>
                 ))}

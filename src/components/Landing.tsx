@@ -1,4 +1,4 @@
-import { Camera, Sparkles, MessageCircle, LayoutGrid, MapPin, CalendarClock, Mic, ShieldCheck, Check, ArrowRight } from "lucide-react";
+import { Camera, Sparkles, MessageCircle, LayoutGrid, MapPin, CalendarClock, Mic, ShieldCheck, Check, ArrowRight, FileText, Coins } from "lucide-react";
 
 export default function Landing({ onStart }: { onStart: () => void }) {
   const passos = [
@@ -8,6 +8,7 @@ export default function Landing({ onStart }: { onStart: () => void }) {
   ];
 
   const recursos = [
+    { icon: FileText, t: "Propostas com IA", d: "Cole a conversa do WhatsApp: escopo, prazo e PDF profissional com a sua marca em minutos." },
     { icon: LayoutGrid, t: "Funil visual", d: "Lead · Prospect · Negociando · Fechado · Pós-Vendas — arraste e acompanhe." },
     { icon: MapPin, t: "Radar com mapa", d: "Veja os leads ao redor do seu ponto e toque em “Como chegar”." },
     { icon: CalendarClock, t: "Agenda + follow-ups", d: "Follow-up do dia seguinte automático, com lembrete no celular." },
@@ -45,11 +46,11 @@ export default function Landing({ onStart }: { onStart: () => void }) {
         </p>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <button onClick={onStart} className="btn-primary !px-7 !py-3 !text-base">
-            Começar grátis (3 dias) <ArrowRight className="h-4 w-4" />
+            Começar grátis <ArrowRight className="h-4 w-4" />
           </button>
           <a href="#como" className="btn-ghost !px-6 !py-3">Ver como funciona</a>
         </div>
-        <p className="mt-4 text-xs font-semibold text-brand-ink/50">Sem cartão nos primeiros 3 dias · depois R$ 29,90/mês</p>
+        <p className="mt-4 text-xs font-semibold text-brand-ink/50">200 Doods de boas-vindas · sem assinatura · você só paga pelo que usa</p>
       </section>
 
       {/* Como funciona */}
@@ -91,16 +92,19 @@ export default function Landing({ onStart }: { onStart: () => void }) {
       <section className="mx-auto max-w-md px-5 py-14">
         <div className="card overflow-hidden p-0 text-center">
           <div className="bg-gradient-to-br from-brand-pink to-brand-purple px-6 py-8 text-white">
-            <p className="text-sm font-bold uppercase tracking-wider text-white/80">Assinatura</p>
-            <p className="mt-1 text-5xl font-black">R$ 29,90<span className="text-lg font-bold">/mês</span></p>
-            <p className="mt-2 text-sm font-semibold text-white/85">3 dias grátis para começar</p>
+            <p className="text-sm font-bold uppercase tracking-wider text-white/80">Créditos Dood's</p>
+            <p className="mt-1 text-5xl font-black">1 Dood<span className="text-lg font-bold"> = R$ 0,01</span></p>
+            <p className="mt-2 text-sm font-semibold text-white/85">200 Doods grátis ao criar a conta</p>
           </div>
           <div className="space-y-3 p-6 text-left">
-            {["Leads ilimitados por foto", "Mensagem personalizada por ramo", "Funil, Radar, Agenda e follow-ups", "Sua própria IA ou o padrão do app", "Cancele quando quiser"].map((t) => (
+            {["Sem assinatura: você só paga pelo que usar", "Recargas a partir de R$ 10", "Créditos não expiram", "O que não usa IA continua livre", "Seu saldo fica na conta e não expira"].map((t) => (
               <p key={t} className="flex items-start gap-2 text-sm font-medium text-brand-ink/80">
                 <Check className="mt-0.5 h-4 w-4 shrink-0 text-brand-money" /> {t}
               </p>
             ))}
+            <div className="flex items-center justify-center gap-2 rounded-xl bg-brand-purple/10 py-2 text-xs font-bold text-brand-deep">
+              <Coins className="h-4 w-4 text-brand-gold" /> Recarregue quando quiser, dentro do app
+            </div>
             <button onClick={onStart} className="btn-primary mt-2 w-full">Começar agora</button>
           </div>
         </div>

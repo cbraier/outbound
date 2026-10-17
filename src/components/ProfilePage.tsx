@@ -3,8 +3,22 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { getCurrentLocation, reverseGeocode } from "@/lib/geo";
 import { socialUrl } from "@/lib/format";
+import { findBrandLogo, uploadBrandLogo } from "@/lib/brand";
 import CollapsibleCard from "@/components/CollapsibleCard";
-import { Loader2, Save, Paperclip, MapPin, X, Mic, Square, Sparkles, Copy, Send, Search } from "lucide-react";
+import { Loader2, Save, Paperclip, MapPin, X, Mic, Square, Sparkles, Copy, Send, Search, Image as ImageIcon, Trash2 } from "lucide-react";
+
+function distKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6371;
+  const dLat = ((bLat - aLat) * Math.PI) / 180;
+  const dLng = ((bLng - aLng) * Math.PI) / 180;
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((aLat * Math.PI) / 180) * Math.cos((bLat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
+}
+function fmtDist(km: number): string {
+  return km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1).replace(".", ",")} km`;
+}
 
 async function blobToB64(blob: Blob): Promise<string> {
   return new Promise((res, rej) => {
@@ -122,8 +136,12 @@ function tagFromSector(s: string): string {
   return w.replace(/s$/, "");
 }
 
-export default function ProfilePage() {
-  const { user } = useAuth();
+export default function ProfilePage({ onRefresh }: { onRefresh?: () => void }) {
+  const { user, signOut, updatePassword } = useAuth();
+  const [deleting, setDeleting] = useState(false);
+  const [newPwd, setNewPwd] = useState("");
+  const [newPwd2, setNewPwd2] = useState("");
+  const [pwdBusy, setPwdBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -141,13 +159,19 @@ export default function ProfilePage() {
   const [interviewing, setInterviewing] = useState(false);
   const [interviewDone, setInterviewDone] = useState(false);
   const [discSector, setDiscSector] = useState("");
-  const [discList, setDiscList] = useState<{ nome?: string; site?: string; telefone?: string; cidade?: string; endereco?: string; lat?: number; lng?: number }[]>([]);
+  type DiscItem = { nome?: string; site?: string; telefone?: string; cidade?: string; endereco?: string; lat?: number; lng?: number; dist_km?: number | null; _km?: number | null };
+  const [discList, setDiscList] = useState<DiscItem[]>([]);
   const [discBusy, setDiscBusy] = useState(false);
   const [discMsg, setDiscMsg] = useState("");
   const [discSel, setDiscSel] = useState<number[]>([]);
+  const [addBusy, setAddBusy] = useState(false);
   const [docBusy, setDocBusy] = useState(false);
   const [docName, setDocName] = useState("");
   const docRef = useRef<HTMLInputElement>(null);
+  const logoRef = useRef<HTMLInputElement>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [brandColor, setBrandColor] = useState("#A855F7");
+  const [logoBusy, setLogoBusy] = useState(false);
   const [f, setF] = useState({
     nome: "",
     company: "",
@@ -166,6 +190,7 @@ export default function ProfilePage() {
     work_lng: 0,
     resume_text: "",
     resume_url: "",
+    resume_summary: "",
     socials: {} as Record<string, string>,
   });
 
@@ -176,7 +201,7 @@ export default function ProfilePage() {
       .select("*")
       .eq("user_id", user.id)
       .maybeSingle()
-      .then(({ data }) => {
+      .then(async ({ data }) => {
         if (data) {
           setF({
             nome: data.nome || "",
@@ -196,8 +221,12 @@ export default function ProfilePage() {
             work_lng: (data.work_lng as number) || 0,
             resume_text: data.resume_text || "",
             resume_url: data.resume_url || "",
+            resume_summary: data.resume_summary || "",
             socials: (data.socials as Record<string, string>) || {},
           });
+          const socials = (data.socials as Record<string, string>) || {};
+          setLogoUrl(socials._logo || (await findBrandLogo(user.id)));
+          setBrandColor(socials._brand_color || "#A855F7");
           setResearchConsent(!!data.research_consent);
         }
         setLoading(false);
@@ -352,6 +381,10 @@ export default function ProfilePage() {
 
   const buscarSetor = async () => {
     if (!discSector.trim()) return;
+    if (!f.work_lat || !f.work_lng) {
+      setDiscMsg("Defina sua localização em Atendimento (botão do alfinete) para buscar dentro do seu raio.");
+      return;
+    }
     setDiscBusy(true);
     setDiscMsg("");
     setDiscList([]);
@@ -373,9 +406,21 @@ export default function ProfilePage() {
         setDiscMsg(data.error);
         return;
       }
-      setDiscList(data.negocios || []);
+      const base = (data.negocios || []) as DiscItem[];
+      const hasLoc = !!f.work_lat && !!f.work_lng;
+      const withD = base
+        .map((n) => ({
+          ...n,
+          _km: typeof n.dist_km === "number"
+            ? n.dist_km
+            : hasLoc && n.lat != null && n.lng != null
+            ? distKm(f.work_lat, f.work_lng, n.lat, n.lng)
+            : null,
+        }))
+        .sort((a, b) => (a._km ?? 1e9) - (b._km ?? 1e9));
+      setDiscList(withD);
       setDiscSel([]);
-      if (!data.negocios?.length) setDiscMsg("Nada encontrado nessa região.");
+      if (!withD.length) setDiscMsg(data.aviso || `Nada num raio de ${f.radius_km} km. Aumente o raio em Atendimento ou tente outro setor.`);
     } catch (e) {
       setDiscMsg(e instanceof Error ? e.message : "Falha na busca");
     } finally {
@@ -383,8 +428,8 @@ export default function ProfilePage() {
     }
   };
 
-  const addDiscoverLead = async (n: { nome?: string; site?: string; telefone?: string; cidade?: string; endereco?: string; lat?: number; lng?: number }) => {
-    if (!user) return;
+  const addDiscoverLead = async (n: DiscItem): Promise<boolean> => {
+    if (!user) return false;
     const tag = tagFromSector(discSector);
     const { error } = await supabase.from("leads").insert({
       user_id: user.id,
@@ -401,9 +446,24 @@ export default function ProfilePage() {
     } as never);
     if (error) {
       alert("Erro ao adicionar: " + error.message);
-      return;
+      return false;
     }
     setDiscList((l) => l.filter((x) => x !== n));
+    return true;
+  };
+
+  const adicionarVarios = async (items: DiscItem[]) => {
+    if (!items.length || addBusy) return;
+    setAddBusy(true);
+    setDiscMsg("");
+    let ok = 0;
+    for (const n of items) {
+      if (await addDiscoverLead(n)) ok++;
+    }
+    setDiscSel([]);
+    onRefresh?.();
+    setDiscMsg(`${ok} lead(s) adicionado(s) ao Funil. Abra a aba “Funil” para ver.`);
+    setAddBusy(false);
   };
 
   const usarLocalizacao = async () => {
@@ -416,7 +476,7 @@ export default function ProfilePage() {
     await supabase.from("profiles").update({ work_lat: loc.lat, work_lng: loc.lng } as never).eq("user_id", user.id);
     const addr = await reverseGeocode(loc.lat, loc.lng);
     const rua = [addr?.endereco, addr?.bairro, addr?.cidade].filter(Boolean).join(", ");
-    setF((p) => ({ ...p, work_address: rua || p.work_address || "📍 localização salva" }));
+    setF((p) => ({ ...p, work_address: rua || p.work_address || "📍 localização salva", work_lat: loc.lat, work_lng: loc.lng }));
     alert(rua ? `Localização salva: ${rua}` : "Localização de atendimento salva!");
   };
 
@@ -430,8 +490,15 @@ export default function ProfilePage() {
       const path = `${user.id}/${Date.now()}.${ext}`;
       await supabase.storage.from("profile_docs").upload(path, file, { upsert: true, contentType: file.type });
       const { data } = supabase.storage.from("profile_docs").getPublicUrl(path);
-      setF((p) => ({ ...p, resume_text: texto, resume_url: data.publicUrl }));
-      alert(`Documento lido com sucesso: ${texto.length} caracteres.\n\nEsse texto passa a ser usado nas abordagens (aparece na prévia abaixo).`);
+      // Destila os diferenciais do currículo (skill) para a IA usar com peso nas abordagens.
+      let resumo = "";
+      try {
+        const { data: rd } = await supabase.functions.invoke("ai-message", { body: { action: "resume", text: texto } });
+        if (rd?.summary) resumo = String(rd.summary);
+      } catch { /* segue sem resumo */ }
+      setF((p) => ({ ...p, resume_text: texto, resume_url: data.publicUrl, resume_summary: resumo }));
+      await supabase.from("profiles").update({ resume_text: texto, resume_url: data.publicUrl, resume_summary: resumo } as never).eq("user_id", user.id);
+      alert(`Documento lido com sucesso: ${texto.length} caracteres.\n\nExtraí os destaques dele para as abordagens:` + (resumo ? `\n\n${resumo}` : " (não consegui extrair destaques agora)"));
     } catch (e) {
       alert(e instanceof Error ? e.message : "Falha ao ler o documento.");
       setDocName("");
@@ -442,6 +509,65 @@ export default function ProfilePage() {
   };
 
   const setSocial = (k: string, v: string) => setF((p) => ({ ...p, socials: { ...p.socials, [k]: v } }));
+
+  const enviarLogo = async (file?: File | null) => {
+    if (!file || !user) return;
+    setLogoBusy(true);
+    try {
+      const url = await uploadBrandLogo(user.id, file);
+      setLogoUrl(url);
+      const socials = { ...f.socials, _logo: url, _brand_color: brandColor };
+      setF((p) => ({ ...p, socials }));
+      await supabase.from("profiles").update({ socials } as never).eq("user_id", user.id);
+      onRefresh?.();
+    } catch (e) {
+      alert("Não consegui enviar o logo: " + (e instanceof Error ? e.message : "erro"));
+    } finally {
+      setLogoBusy(false);
+      if (logoRef.current) logoRef.current.value = "";
+    }
+  };
+
+  const removerLogo = async () => {
+    if (!user) return;
+    setLogoUrl(null);
+    const socials = { ...f.socials, _logo: "" };
+    setF((p) => ({ ...p, socials }));
+    await supabase.storage.from("profile_docs").remove([`${user.id}/brand/logo.png`]);
+    await supabase.from("profiles").update({ socials } as never).eq("user_id", user.id);
+    onRefresh?.();
+  };
+
+  const mudarCor = (color: string) => {
+    setBrandColor(color);
+    setF((p) => ({ ...p, socials: { ...p.socials, _brand_color: color } }));
+  };
+
+  const alterarSenha = async () => {
+    if (newPwd.length < 6) { alert("A senha precisa ter ao menos 6 caracteres."); return; }
+    if (newPwd !== newPwd2) { alert("As senhas não conferem."); return; }
+    setPwdBusy(true);
+    const { error } = await updatePassword(newPwd);
+    setPwdBusy(false);
+    if (error) { alert("Não deu para trocar a senha: " + error); return; }
+    setNewPwd(""); setNewPwd2("");
+    alert("Senha alterada com sucesso!");
+  };
+
+  const excluirConta = async () => {
+    if (!confirm("Tem certeza? Isso apaga sua conta e TODOS os seus leads. Não dá para desfazer.")) return;
+    if (!confirm("Confirme de novo: excluir definitivamente sua conta e seus dados?")) return;
+    setDeleting(true);
+    try {
+      const { error } = await supabase.functions.invoke("delete-account", {});
+      if (error) throw error;
+      await signOut();
+    } catch (e) {
+      alert("Não deu para excluir agora: " + (e instanceof Error ? e.message : "erro"));
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   if (loading) return <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-brand-pink" /></div>;
 
@@ -508,89 +634,31 @@ export default function ProfilePage() {
         </div>
       </CollapsibleCard>
 
-      <CollapsibleCard title="Atendimento" subtitle="Onde você atende e até quantos km se desloca." storageKey="atendimento">
-        <div className="space-y-3">
-          <div>
-            <span className="label">Endereço de trabalho</span>
-            <div className="flex gap-2">
-              <input className="input" value={f.work_address} onChange={(e) => setF({ ...f, work_address: e.target.value })} placeholder="Rua, cidade" />
-              <button className="btn-ghost shrink-0 !px-3" onClick={usarLocalizacao} title="Usar minha localização">
-                <MapPin className="h-4 w-4" />
-              </button>
-            </div>
+      <CollapsibleCard title="Marca das propostas" subtitle="Logo e cor usados no PDF profissional." storageKey="marca">
+        <div className="flex items-center gap-3 rounded-xl border border-brand-purple/15 bg-white/60 p-3">
+          <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-brand-purple/15 bg-white">
+            {logoUrl ? <img src={logoUrl} alt="Logo" className="h-full w-full object-contain" /> : <ImageIcon className="h-6 w-6 text-brand-purple/40" />}
           </div>
-          <div>
-            <span className="label">Raio de atendimento: {f.radius_km} km</span>
-            <input type="range" min={1} max={100} value={f.radius_km} onChange={(e) => setF({ ...f, radius_km: Number(e.target.value) })} className="w-full accent-brand-pink" />
-          </div>
-          <div>
-            <span className="label">Região / cidades de atendimento</span>
-            <input className="input" value={f.region} onChange={(e) => setF({ ...f, region: e.target.value })} placeholder="Palhoça, São José, Biguaçu" />
-            <p className="mt-1 text-[10px] text-brand-ink/60">
-              <b>Separe as cidades por vírgula</b> (pode ter um espaço depois da vírgula). Ex.: <b>Palhoça, São José, Biguaçu</b>.
-              Para <b>acrescentar</b>, escreva a cidade; para <b>tirar</b>, é só apagá-la. A pesquisa na web fica <b>travada nessa região</b> (perto de você).
-            </p>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold text-brand-deep">{f.company || f.nome || "Sua marca"}</p>
+            <p className="truncate text-[11px] text-brand-ink/50">{f.site || "Informe seu site acima"}</p>
+            <p className="mt-1 text-[11px] text-brand-ink/50">Aparece no cabeçalho, no rodapé e na assinatura da proposta.</p>
           </div>
         </div>
-      </CollapsibleCard>
-
-      <CollapsibleCard title="Descobrir negócios (por setor)" subtitle="Ache empresas da sua região por setor e jogue no funil." storageKey="descobrir">
-        <div className="space-y-2">
-          <div className="flex gap-2">
-            <input className="input" value={discSector} onChange={(e) => setDiscSector(e.target.value)} placeholder="Ex.: oficinas mecânicas" />
-            <button className="btn-primary shrink-0" onClick={buscarSetor} disabled={discBusy || !discSector.trim()}>
-              {discBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} Buscar
+        <input ref={logoRef} type="file" accept="image/*" hidden onChange={(e) => void enviarLogo(e.target.files?.[0])} />
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button className="btn-ghost !px-3 !py-2 !text-xs" onClick={() => logoRef.current?.click()} disabled={logoBusy}>
+            {logoBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageIcon className="h-3.5 w-3.5" />} {logoBusy ? "Enviando..." : "Enviar logo"}
+          </button>
+          {logoUrl && (
+            <button className="btn-ghost !px-3 !py-2 !text-xs !text-red-600" onClick={() => void removerLogo()}>
+              <Trash2 className="h-3.5 w-3.5" /> Remover
             </button>
-          </div>
-          <p className="text-[10px] text-brand-ink/60">
-            Usa a sua <b>região</b> (campo Atendimento) para buscar na web. Depois é só adicionar como leads no funil.
-          </p>
-          {discBusy && <p className="text-[11px] font-semibold text-brand-ink/70">Buscando “{discSector}” na sua região…</p>}
-          {discMsg && <p className="text-[11px] text-brand-ink/70">{discMsg}</p>}
-          {discList.length > 0 && (
-            <div className="space-y-2">
-              <div className="flex gap-2">
-                <button
-                  className="btn-primary flex-1 !py-1.5 !text-xs"
-                  disabled={!discSel.length}
-                  onClick={async () => {
-                    const items = discSel.map((i) => discList[i]);
-                    setDiscSel([]);
-                    for (const n of items) await addDiscoverLead(n);
-                  }}
-                >
-                  Adicionar selecionados ({discSel.length})
-                </button>
-                <button
-                  className="btn-ghost flex-1 !py-1.5 !text-xs"
-                  onClick={async () => {
-                    for (const n of [...discList]) await addDiscoverLead(n);
-                  }}
-                >
-                  Adicionar todos ({discList.length})
-                </button>
-              </div>
-              {discList.map((n, i) => {
-                const sel = discSel.includes(i);
-                return (
-                  <label
-                    key={i}
-                    className={`flex items-center gap-2 rounded-xl border p-2 ${sel ? "border-brand-pink bg-brand-pink/5" : "border-brand-purple/15 bg-white/60"}`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={sel}
-                      onChange={() => setDiscSel((s) => (sel ? s.filter((x) => x !== i) : [...s, i]))}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-bold text-brand-deep">{n.nome}</p>
-                      <p className="truncate text-[11px] text-brand-ink/50">{[n.endereco || n.cidade, n.site].filter(Boolean).join(" · ")}</p>
-                    </div>
-                  </label>
-                );
-              })}
-            </div>
           )}
+          <label className="flex items-center gap-2 rounded-full border border-brand-purple/20 px-3 py-2 text-xs font-bold text-brand-deep">
+            Cor da marca
+            <input type="color" value={brandColor} onChange={(e) => mudarCor(e.target.value)} className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent p-0" />
+          </label>
         </div>
       </CollapsibleCard>
 
@@ -718,36 +786,20 @@ export default function ProfilePage() {
         </div>
       </CollapsibleCard>
 
-      <CollapsibleCard title="Elaboração de mensagens" subtitle="Provedor da IA e teste de conexão." storageKey="elaboracao">
+      <CollapsibleCard title="Elaboração de mensagens" subtitle="IA do app e consumo de Doods." storageKey="elaboracao">
+        <p className="text-[12px] leading-snug text-brand-ink/70">
+          As mensagens são geradas pela <b>IA do app</b>, gerenciada automaticamente — você não precisa configurar nada.
+          Cada elaboração consome <b>Doods</b>. Veja o saldo e recarregue na aba <b>Dood's</b>.
+        </p>
+      </CollapsibleCard>
+
+      <CollapsibleCard title="Conta e segurança" subtitle="Alterar a senha de acesso." storageKey="conta">
         <div className="space-y-3">
-          <div>
-            <span className="label">Provedor</span>
-            <select
-              className="input"
-              value={f.ai_provider}
-              onChange={(e) => {
-                const p = e.target.value;
-                setF((prev) => ({ ...prev, ai_provider: p, ai_api_key: prev.ai_keys[p] || "" }));
-              }}
-            >
-              {PROVIDERS.map((p) => <option key={p.v} value={p.v}>{p.label}</option>)}
-            </select>
-          </div>
-          {f.ai_provider !== "default" && (
-            <div>
-              <span className="label">Sua API key ({f.ai_provider}) — cada provedor guarda a sua</span>
-              <input
-                className="input"
-                value={f.ai_api_key}
-                onChange={(e) => setF((prev) => ({ ...prev, ai_api_key: e.target.value, ai_keys: { ...prev.ai_keys, [prev.ai_provider]: e.target.value } }))}
-                placeholder="cole sua chave"
-              />
-            </div>
-          )}
-          <button type="button" className="btn-ghost w-full" onClick={testarIA} disabled={testing}>
-            {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Testar conexão
+          <div><span className="label">Nova senha</span><input className="input" type="password" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} placeholder="mínimo 6 caracteres" /></div>
+          <div><span className="label">Confirmar nova senha</span><input className="input" type="password" value={newPwd2} onChange={(e) => setNewPwd2(e.target.value)} /></div>
+          <button className="btn-primary w-full" onClick={alterarSenha} disabled={pwdBusy}>
+            {pwdBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Alterar senha
           </button>
-          {testMsg && <p className="text-[11px] font-medium text-brand-ink/80">{testMsg}</p>}
         </div>
       </CollapsibleCard>
 
@@ -755,6 +807,14 @@ export default function ProfilePage() {
         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
         {saved ? "Atualizado!" : "Atualizar"}
       </button>
+
+      <div className="mt-6 rounded-2xl border border-red-200 bg-red-50/60 p-4">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-red-600">Zona de perigo</p>
+        <p className="mt-1 text-[11px] text-brand-ink/60">Exclui permanentemente sua conta, seus leads, mensagens e arquivos.</p>
+        <button className="btn-ghost mt-3 w-full !text-red-600" onClick={excluirConta} disabled={deleting}>
+          {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />} Excluir minha conta
+        </button>
+      </div>
     </div>
   );
 }
