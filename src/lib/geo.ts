@@ -67,6 +67,63 @@ export async function reverseGeocode(lat: number, lng: number): Promise<GeoAddre
   }
 }
 
+
+export interface GeocodedAddress extends GeoPoint {
+  label: string;
+  city?: string;
+  state?: string;
+  country?: string;
+}
+
+function geoText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+/**
+ * Busca um endereço/cidade no OpenStreetMap (Photon) e devolve lat/lng.
+ * Serve para definir um ponto de partida remoto, sem depender do GPS.
+ */
+export async function geocodeAddress(query: string): Promise<GeocodedAddress | null> {
+  const q = query.trim();
+  if (!q) return null;
+
+  try {
+    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=1`;
+    const response = await fetch(url, { headers: { Accept: "application/json" } });
+    if (!response.ok) return null;
+
+    const body = (await response.json()) as {
+      features?: Array<{
+        properties?: Record<string, unknown>;
+        geometry?: { coordinates?: number[] };
+      }>;
+    };
+    const feature = body.features?.[0];
+    const coords = feature?.geometry?.coordinates;
+    if (!coords || coords.length < 2) return null;
+
+    const lat = Number(coords[1]);
+    const lng = Number(coords[0]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+    const p = feature?.properties || {};
+    const type = geoText(p.type);
+    const name = geoText(p.name);
+    const street = [geoText(p.street), geoText(p.housenumber)].filter(Boolean).join(" ");
+    const city = geoText(p.city) || (type === "city" ? name : "") || geoText(p.county) || geoText(p.district);
+    const state = geoText(p.state);
+    const country = geoText(p.countrycode) || geoText(p.country);
+
+    const primary = type === "city" ? city : street || name || city;
+    const labelParts = [primary, city !== primary ? city : "", state].filter(Boolean);
+    const label = labelParts.filter((part, index, all) => all.indexOf(part) === index).join(", ") || q;
+
+    return { lat, lng, label, city: city || undefined, state: state || undefined, country: country || undefined };
+  } catch {
+    return null;
+  }
+}
+
 /** Sobe a foto no bucket `lead_photos` e devolve a URL pública. */
 export async function uploadLeadPhoto(base64: string, mime: string, userId: string): Promise<string | null> {
   try {

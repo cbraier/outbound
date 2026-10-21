@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { MapContainer, TileLayer, Marker, Popup, Circle } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { type Lead } from "@/lib/types";
@@ -8,7 +8,7 @@ import CollapsibleCard from "@/components/CollapsibleCard";
 import { supabase } from "@/lib/supabase";
 import { chargeDood } from "@/lib/dood";
 import { useAuth } from "@/contexts/AuthContext";
-import { getCurrentLocation, reverseGeocode, googleMapsDirectionsUrl } from "@/lib/geo";
+import { geocodeAddress, getCurrentLocation, reverseGeocode, googleMapsDirectionsUrl } from "@/lib/geo";
 import { openExternalLink } from "@/lib/wa";
 import { Loader2, MapPin, Search } from "lucide-react";
 
@@ -20,6 +20,14 @@ function dot(color: string, big = false) {
     iconSize: [s, s],
     iconAnchor: [s / 2, s / 2],
   });
+}
+
+function RecenterMap({ lat, lng, zoom }: { lat: number; lng: number; zoom: number }) {
+  const map = useMap();
+  useEffect(() => {
+    map.setView([lat, lng], zoom);
+  }, [map, lat, lng, zoom]);
+  return null;
 }
 
 function distKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
@@ -88,6 +96,9 @@ export default function Radar({
   const [workLat, setWorkLat] = useState(Number(profile?.work_lat) || 0);
   const [workLng, setWorkLng] = useState(Number(profile?.work_lng) || 0);
   const [savingAddr, setSavingAddr] = useState(false);
+  const [geocoding, setGeocoding] = useState(false);
+  const [geoMsg, setGeoMsg] = useState("");
+  const [syncRegion, setSyncRegion] = useState(true);
 
   const [discSector, setDiscSector] = useState(() => sessionStorage.getItem("ob_disc_sector") || "");
   const [discList, setDiscList] = useState<DiscItem[]>(() => {
@@ -134,11 +145,52 @@ export default function Radar({
       setWorkLng(loc.lng);
       const addr = await reverseGeocode(loc.lat, loc.lng);
       const rua = [addr?.endereco, addr?.bairro, addr?.cidade].filter(Boolean).join(", ");
+      const reg = syncRegion && addr?.cidade ? [addr.cidade, addr.estado].filter(Boolean).join(", ") : "";
       if (rua) setWorkAddress(rua);
-      await salvarPerfil({ work_lat: loc.lat, work_lng: loc.lng, ...(rua ? { work_address: rua } : {}) });
+      if (reg) setRegion(reg);
+      setGeoMsg("");
+      await salvarPerfil({
+        work_lat: loc.lat,
+        work_lng: loc.lng,
+        ...(rua ? { work_address: rua } : {}),
+        ...(reg ? { region: reg } : {}),
+      });
       alert(rua ? `Localização salva: ${rua}` : "Localização de atendimento salva!");
     } finally {
       setSavingAddr(false);
+    }
+  };
+
+  const definirLocalManual = async () => {
+    const query = workAddress.trim();
+    if (!query) {
+      setGeoMsg("Digite uma cidade ou endereço. Ex.: Barra Bonita, SP.");
+      return;
+    }
+    setGeocoding(true);
+    setGeoMsg("");
+    try {
+      const loc = await geocodeAddress(query);
+      if (!loc) {
+        setGeoMsg("Não encontrei esse local. Tente incluir cidade e UF, ex.: Barra Bonita, SP.");
+        return;
+      }
+      const reg = [loc.city, loc.state].filter(Boolean).join(", ");
+      setWorkLat(loc.lat);
+      setWorkLng(loc.lng);
+      setWorkAddress(loc.label);
+      if (syncRegion && reg) setRegion(reg);
+      await salvarPerfil({
+        work_address: loc.label,
+        work_lat: loc.lat,
+        work_lng: loc.lng,
+        ...(syncRegion && reg ? { region: reg } : {}),
+      });
+      setGeoMsg(`Ponto de partida definido: ${loc.label}.`);
+    } catch {
+      setGeoMsg("Não consegui buscar o endereço agora. Tente novamente.");
+    } finally {
+      setGeocoding(false);
     }
   };
 
@@ -151,8 +203,8 @@ export default function Radar({
   const buscarSetor = async () => {
     if (!discSector.trim()) return;
     if (!workLat || !workLng) {
-      setDiscMsg("Defina sua localização em Atendimento (botão do alfinete) para buscar dentro do seu raio.");
-      alert("Primeiro defina sua localização: toque em 'Usar minha localização agora' (bloco amarelo) ou no alfinete em Atendimento.");
+      setDiscMsg("Defina o ponto de partida em Atendimento (GPS ou cidade/endereço) para buscar dentro do raio.");
+      alert("Primeiro defina o ponto de partida: use o GPS ou digite uma cidade/endereço no bloco Atendimento.");
       return;
     }
     setDiscBusy(true);
@@ -282,31 +334,79 @@ export default function Radar({
     <div className="space-y-3">
       {(!workLat || !workLng) && (
         <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4">
-          <p className="text-sm font-extrabold text-amber-800">Configure sua localização primeiro</p>
+          <p className="text-sm font-extrabold text-amber-800">Defina seu ponto de partida</p>
           <p className="mt-1 text-[12px] leading-snug text-amber-800/90">
-            O Radar e o "Descobrir negócios (por setor)" só encontram o que existe perto de você depois que você salva sua localização e define o raio. É rápido: toque no botão abaixo.
+            O Radar e o "Descobrir negócios (por setor)" usam o ponto de partida + raio. Use o GPS ou digite uma cidade/endereço em <b>Atendimento</b> — ex.: Barra Bonita, SP — mesmo que você esteja em outra cidade.
           </p>
-          <button className="btn-primary mt-3 w-full" onClick={usarLocalizacao} disabled={savingAddr}>
-            {savingAddr ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />} Usar minha localização agora
+          <div className="mt-3 flex gap-2">
+            <input
+              className="input"
+              value={workAddress}
+              onChange={(e) => { setWorkAddress(e.target.value); if (geoMsg) setGeoMsg(""); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !geocoding) {
+                  e.preventDefault();
+                  void definirLocalManual();
+                }
+              }}
+              placeholder="Cidade/endereço. Ex.: Barra Bonita, SP"
+              autoCapitalize="words"
+              autoCorrect="off"
+              spellCheck={false}
+            />
+            <button className="btn-primary shrink-0 !px-3 !text-xs" onClick={() => void definirLocalManual()} disabled={geocoding || !workAddress.trim()}>
+              {geocoding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} Definir
+            </button>
+          </div>
+          {geoMsg && (
+            <p className="mt-1 text-[11px] font-semibold text-red-600">{geoMsg}</p>
+          )}
+          <button className="btn-ghost mt-2 w-full !py-2 !text-xs" onClick={usarLocalizacao} disabled={savingAddr}>
+            {savingAddr ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />} Usar minha localização atual (GPS)
           </button>
         </div>
       )}
       <CollapsibleCard title="Atendimento" subtitle="Onde você atende e até quantos km se desloca." storageKey="atendimento">
         <div className="space-y-3">
           <div>
-            <span className="label">Endereço / local de atendimento</span>
+            <span className="label">Ponto de partida da prospecção</span>
             <div className="flex gap-2">
               <input
                 className="input"
                 value={workAddress}
-                onChange={(e) => setWorkAddress(e.target.value)}
-                onBlur={() => void salvarPerfil({ work_address: workAddress })}
-                placeholder="Toque no alfinete para usar sua localização"
+                onChange={(e) => { setWorkAddress(e.target.value); if (geoMsg) setGeoMsg(""); }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !geocoding) {
+                    e.preventDefault();
+                    void definirLocalManual();
+                  }
+                }}
+                placeholder="Cidade ou endereço. Ex.: Barra Bonita, SP"
+                autoCapitalize="words"
+                autoCorrect="off"
+                spellCheck={false}
               />
-              <button className="btn-ghost shrink-0 !px-3" onClick={usarLocalizacao} disabled={savingAddr} title="Usar minha localização">
-                {savingAddr ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />}
+              <button className="btn-primary shrink-0 !px-3 !text-xs" onClick={() => void definirLocalManual()} disabled={geocoding || !workAddress.trim()}>
+                {geocoding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} Definir
               </button>
             </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button className="btn-ghost !px-3 !py-1.5 !text-[11px]" onClick={usarLocalizacao} disabled={savingAddr}>
+                {savingAddr ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MapPin className="h-3.5 w-3.5" />} Usar minha localização atual
+              </button>
+              <label className="flex items-center gap-1.5 text-[10px] font-semibold text-brand-ink/60">
+                <input type="checkbox" checked={syncRegion} onChange={(e) => setSyncRegion(e.target.checked)} className="h-3.5 w-3.5 accent-brand-purple" />
+                Atualizar a região de prospecção
+              </label>
+            </div>
+            <p className="mt-1 text-[10px] leading-snug text-brand-ink/50">
+              Digite qualquer cidade/endereço para prospectar ali, mesmo estando em outra cidade. O mapa e o raio partem deste ponto.
+            </p>
+            {geoMsg && (
+              <p className={`mt-1 text-[11px] font-semibold ${geoMsg.startsWith("Ponto") ? "text-emerald-700" : "text-red-600"}`}>
+                {geoMsg}
+              </p>
+            )}
           </div>
           <div>
             <span className="label">Raio de atendimento: {radiusKm} km</span>
@@ -372,6 +472,7 @@ export default function Radar({
       <div className="mx-auto max-w-md overflow-hidden rounded-2xl border border-brand-purple/20" style={{ height: 420 }}>
         <MapContainer center={centerPt} zoom={zoom} style={{ height: "100%", width: "100%" }}>
           <TileLayer attribution="&copy; OpenStreetMap" url="https://tile.openstreetmap.org/{z}/{x}/{y}.png" />
+          {center && <RecenterMap lat={center.lat} lng={center.lng} zoom={zoom} />}
           {center && (
             <>
               <Marker position={[center.lat, center.lng]} icon={dot("#3B0764", true)}>
@@ -405,7 +506,7 @@ export default function Radar({
         </MapContainer>
       </div>
       <p className="mx-auto max-w-md text-center text-[11px] text-brand-ink/50">
-        Círculo = seu raio de atendimento ({radiusKm} km). Ajuste acima, em Atendimento.
+        Ponto de partida: {workAddress || "não definido"} · raio de {radiusKm} km. Ajuste acima, em Atendimento.
       </p>
 
       {open && profile && <LeadDrawer lead={open} profile={profile} onClose={() => setOpen(null)} onSaved={() => { setOpen(null); onRefresh(); }} />}
