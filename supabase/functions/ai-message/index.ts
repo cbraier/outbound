@@ -300,6 +300,8 @@ const PROPOSAL_SYSTEM = `Você é um consultor comercial sênior de uma agência
 
 Leia com atenção a conversa e os prints. Extraia apenas o que o cliente realmente pediu. Quando faltar informação, assuma o cenário mais comum e registre a suposição em "premissas" — nunca invente um pedido que não aparece.
 
+As "Observações do vendedor" podem conter uma "AUDITORIA DO SITE DO CLIENTE" com melhorias recomendadas. Trate essas melhorias como ofertas do vendedor: inclua os ajustes no escopo e nos entregáveis, explicando o ganho esperado, sem apresentá-los como pedidos do cliente e sem inventar além do que foi listado.
+
 O vendedor pode oferecer site, landing page, aplicativo, sistema sob medida ou combinação de site + app. Identifique o tipo mais adequado ao pedido.
 
 Use português do Brasil, tom profissional e direto, sem markdown e sem emojis.

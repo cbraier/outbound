@@ -11,6 +11,8 @@ import {
   saveProposal,
 } from "@/lib/proposals";
 import { downloadOrSharePdf } from "@/lib/proposal-pdf";
+import CommerceAuditCard from "@/components/CommerceAuditCard";
+import { auditToProposalContext, type AuditResult } from "@/lib/commercePilot";
 import {
   DEFAULT_BRAND_COLOR,
   PROPOSAL_TYPE_LABELS,
@@ -105,6 +107,9 @@ export default function ProposalPage({
   const [images, setImages] = useState<{ name: string; b64: string }[]>([]);
   const [projectType, setProjectType] = useState<ProposalType>("site");
   const [notes, setNotes] = useState("");
+  const [auditSite, setAuditSite] = useState("");
+  const [audit, setAudit] = useState<AuditResult | null>(null);
+  const [includeAudit, setIncludeAudit] = useState(true);
   const [draft, setDraft] = useState<SavedProposal | null>(null);
   const [busy, setBusy] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
@@ -212,11 +217,13 @@ export default function ProposalPage({
         return;
       }
       setBalance(ch.balance);
+      const auditContext = audit && includeAudit ? auditToProposalContext(audit) : "";
+      const proposalNotes = [auditContext, notes].filter(Boolean).join("\n\n").slice(0, 2000);
       const generated = await generateProposal({
         conversation,
         images: images.map((i) => i.b64),
         projectType,
-        notes,
+        notes: proposalNotes,
         brand,
         provider: profile?.ai_provider,
         apiKey: profile?.ai_api_key,
@@ -232,7 +239,11 @@ export default function ProposalPage({
         marca: { ...brand, logo_url: logoUrl || brand.logo_url, cor: brandColor },
       };
       setDraft(saved);
-      setInfo("Proposta gerada. Revise o escopo, o prazo e o investimento antes de gerar o PDF.");
+      setInfo(
+        audit && includeAudit
+          ? "Proposta gerada com os ajustes da auditoria. Revise o escopo, o prazo e o investimento antes do PDF."
+          : "Proposta gerada. Revise o escopo, o prazo e o investimento antes de gerar o PDF.",
+      );
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Falha ao gerar a proposta.");
     } finally {
@@ -261,6 +272,15 @@ export default function ProposalPage({
       setPdfBusy(false);
       setBusy(false);
     }
+  };
+
+  const novaProposta = () => {
+    setDraft(null);
+    setAudit(null);
+    setAuditSite("");
+    setIncludeAudit(true);
+    setErr("");
+    setInfo("");
   };
 
   const abrir = (p: SavedProposal) => {
@@ -318,6 +338,15 @@ export default function ProposalPage({
 
       {!draft && (
         <>
+          <CommerceAuditCard
+            url={auditSite}
+            onUrlChange={setAuditSite}
+            audit={audit}
+            onAudit={setAudit}
+            included={includeAudit}
+            onIncludedChange={setIncludeAudit}
+          />
+
           <div className="card space-y-4 p-5">
             <div>
               <span className="label">O que você está propondo?</span>
@@ -410,7 +439,7 @@ export default function ProposalPage({
       {draft && (
         <>
           <div className="flex items-center justify-between">
-            <button className="btn-ghost !px-3 !py-1.5 !text-xs" onClick={() => setDraft(null)}>
+            <button className="btn-ghost !px-3 !py-1.5 !text-xs" onClick={novaProposta}>
               <ArrowLeft className="h-3.5 w-3.5" /> Nova proposta
             </button>
             <span className="rounded-full bg-brand-purple/10 px-3 py-1 text-[11px] font-bold text-brand-deep">
