@@ -265,8 +265,8 @@ export default function ProposalPage({
         return;
       }
       setBalance(ch.balance);
-      const auditContext = audit && includeAudit ? auditToProposalContext(audit) : "";
-      const proposalNotes = [auditContext, leadContext, notes].filter(Boolean).join("\n\n").slice(0, 3000);
+      const auditContext = audit && includeAudit ? auditToProposalContext(audit).slice(0, 1000) : "";
+      const proposalNotes = [auditContext, leadContext.slice(0, 500), notes].filter(Boolean).join("\n\n").slice(0, 2000);
       const generated = await generateProposal({
         conversation,
         images: images.map((i) => i.b64),
