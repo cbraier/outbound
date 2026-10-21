@@ -58,6 +58,7 @@ export interface GeneratedProposal {
 
 export interface SavedProposal extends GeneratedProposal {
   id: string;
+  lead_id?: string;
   created_at: string;
   updated_at: string;
   status: "rascunho" | "pronta" | "enviada";

@@ -35,11 +35,13 @@ export default function NovoLead({
   onCaptured,
   profile,
   onRefresh,
+  onGoToDoods,
 }: {
   userId: string;
   onCaptured: (c: CapturedLead) => Lead | null | Promise<Lead | null>;
   profile: Parameters<typeof LeadDrawer>[0]["profile"] | null;
   onRefresh?: () => void;
+  onGoToDoods?: () => void;
 }) {
   const [mode, setMode] = useState<"camera" | "imagem" | "audio" | "manual">("camera");
   const [f, setF] = useState(EMPTY);
@@ -283,6 +285,7 @@ export default function NovoLead({
           lead={created}
           profile={profile}
           onClose={() => setOpenCreated(false)}
+          onGoToDoods={onGoToDoods}
           onSaved={async () => {
             setOpenCreated(false);
             const { data } = await supabase.from("leads").select("*").eq("id", created.id).single();

@@ -42,6 +42,7 @@ export default function CommerceAuditCard({
   onAudit,
   included,
   onIncludedChange,
+  cost,
 }: {
   url: string;
   onUrlChange: (value: string) => void;
@@ -49,6 +50,7 @@ export default function CommerceAuditCard({
   onAudit: (value: AuditResult | null) => void;
   included: boolean;
   onIncludedChange: (value: boolean) => void;
+  cost?: number;
 }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -136,7 +138,7 @@ export default function CommerceAuditCard({
       </div>
 
       <p className="text-[10px] text-brand-ink/40">
-        A auditoria é heurística e não usa IA. A geração da proposta continua custando 10 Doods.
+        A auditoria é heurística e não usa IA. A geração da proposta continua custando {cost ? `${cost} Doods` : "Doods"}.
       </p>
 
       {err && (
@@ -160,7 +162,10 @@ export default function CommerceAuditCard({
               <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-700">
                 <CheckCircle2 className="h-3.5 w-3.5" /> Auditoria pronta
               </div>
-              <p className="truncate text-[11px] text-brand-ink/50">{hostOf(audit.url)}</p>
+              <p className="truncate text-[11px] text-brand-ink/50">
+                {hostOf(audit.url)}
+                {audit.inferred?.type ? ` · ${audit.inferred.type}` : ""}
+              </p>
             </div>
             <div className="flex shrink-0 items-baseline gap-1">
               <span className="text-2xl font-black leading-none text-brand-deep">

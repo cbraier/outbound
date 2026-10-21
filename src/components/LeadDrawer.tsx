@@ -4,6 +4,7 @@ import { chargeDood } from "@/lib/dood";
 import { type Lead, type Stage, STAGES, STAGE_LABELS } from "@/lib/types";
 import { brWaLink, openExternalLink } from "@/lib/wa";
 import { montar } from "@/lib/message";
+import ProposalPage from "@/components/ProposalPage";
 import { X, Sparkles, Loader2, Send, Save, MessageCircle, ExternalLink, CalendarClock, Search, Trash2 } from "lucide-react";
 
 const TIPOS_AG = [
@@ -20,12 +21,14 @@ export default function LeadDrawer({
   onClose,
   onSaved,
   onGoToAgenda,
+  onGoToDoods,
 }: {
   lead: Lead;
-  profile: { ai_instruction: string | null; professional_profile: string | null; fixed_message: string | null; followup_message?: string | null; ai_provider: string | null; ai_api_key: string | null; site: string | null; region?: string | null; radius_km?: number | null };
+  profile: { nome?: string | null; company?: string | null; socials?: Record<string, string> | null; ai_instruction: string | null; professional_profile: string | null; fixed_message: string | null; followup_message?: string | null; ai_provider: string | null; ai_api_key: string | null; site: string | null; region?: string | null; radius_km?: number | null };
   onClose: () => void;
   onSaved: () => void;
   onGoToAgenda?: (d?: Date) => void;
+  onGoToDoods?: () => void;
 }) {
   const [l, setL] = useState<Lead>(lead);
   const [msg, setMsg] = useState(lead.mensagem || "");
@@ -355,6 +358,31 @@ export default function LeadDrawer({
           <p className="text-[11px] leading-snug text-brand-ink/50">
             "Salvar" guarda o lead e a mensagem sem enviar. Ao enviar no WhatsApp, o lead vai para <b>Prospect</b> e um follow-up é agendado.
           </p>
+        </div>
+
+        {/* PROPOSTA COMERCIAL DENTRO DO LEAD */}
+        <div className="mt-6 border-t border-brand-purple/10 pt-4">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="label">Proposta comercial</span>
+            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700">
+              Auditoria grátis · 0 Doods
+            </span>
+          </div>
+          <p className="mb-3 text-[11px] leading-snug text-brand-ink/55">
+            Audite o site deste lead, cole a conversa do WhatsApp e gere a proposta sem sair do lead. O site já vem preenchido.
+          </p>
+          <ProposalPage
+            key={l.id}
+            userId={l.user_id}
+            profile={profile}
+            lead={l}
+            embedded
+            onGoToDoods={onGoToDoods ? () => { onGoToDoods(); onClose(); } : undefined}
+            onSiteChange={(site) => {
+              upd({ site });
+              void supabase.from("leads").update({ site } as never).eq("id", l.id);
+            }}
+          />
         </div>
 
         {/* EXCLUIR */}

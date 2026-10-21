@@ -1,9 +1,11 @@
 /**
- * Commerce Pilot — commercial CEO for mobile-app landing pages.
+ * Commerce Pilot — commercial CEO for sites, e-commerce and digital businesses.
  *
  * Host-only bundle. Exposes five Agent tools (`commerce_*`) plus one system-prompt
  * section that turns commercial questions into the operating routine of a CEO/CRO:
  * audit the site, discover three competitors, benchmark, plan growth, decide.
+ * The audit adapts to the business type: institutional site, local business,
+ * e-commerce, SaaS or mobile app. It never assumes that every site needs an app.
  *
  * Everything is derived from observable page signals and public search results.
  * No network credentials are required: the plugin reuses the Host `web` service.
@@ -121,15 +123,16 @@ function brl(value) {
 }
 
 function totalScore(scores) {
+  const totalWeight = scores.reduce((acc, d) => acc + d.weight, 0) || 100;
   const weighted = scores.reduce((acc, d) => acc + (d.score / 10) * d.weight, 0);
-  return Math.round(weighted * 10) / 10;
+  return Math.round((weighted / totalWeight) * 1000) / 10;
 }
 
 /* ------------------------------------------------------------------ *
  * Page extraction
  * ------------------------------------------------------------------ */
 
-const CTA_RE = /(come[cç]ar|baixar|instalar|experimentar|testar gr[aá]tis|testar|assinar|comprar|contratar|solicitar|agendar|quero|garantir|acessar|abrir conta|download|install|get started|start free|start now|try (it )?free|try now|buy now|subscribe|book (a )?(call|demo)|request (a )?demo|join)/i;
+const CTA_RE = /(come[cç]ar|baixar|instalar|experimentar|testar gr[aá]tis|testar|assinar|comprar|contratar|solicitar|agendar|agende|fale com|pe[cç]a|quero|garantir|acessar|abrir conta|download|install|get started|start free|start now|try (it )?free|try now|buy now|subscribe|book (a )?(call|demo)|request (a )?demo|join)/i;
 
 const PRICING_RE = /(R\$|US\$|\$\s?\d|pre[cç]o|planos?|pricing|assinatura|subscription|\/\s*m[eê]s|per month|por m[eê]s|mensalidade|anual|annual|freemium|gr[aá]tis|free plan|teste gr[aá]tis|free trial)/i;
 
@@ -138,6 +141,28 @@ const SOCIAL_RE = /(avalia[cç][oõ]es|avaliado|depoimentos?|testimonials?|★�
 const RATING_RE = /(★|\bnota\s*\d[,.]?\d?|\d[,.]\d\s*(de\s*5|estrelas|stars)|\b4[,.]\d\s*\/\s*5|\b5\s*estrelas)/i;
 
 const GUARANTEE_RE = /(garantia|reembolso|devolu[cç][aã]o|money[- ]back|refund|cancele quando quiser|cancel anytime|sem fidelidade|no commitment)/i;
+
+const QUOTE_RE = /(or[cç]amento|sob consulta|fale conosco|solicite (uma )?(proposta|avalia[cç][aã]o)|agende (uma )?(avalia[cç][aã]o|visita)|pe[cç]a seu or[cç]amento)/i;
+
+const PORTFOLIO_RE = /(portf[oó]lio|nossos (projetos|clientes|trabalhos)|cases? de sucesso|estudos de caso|galeria de (projetos|trabalhos)|antes e depois)/i;
+
+const ADDRESS_RE = /(endere[cç]o|\brua\s|\bavenida\s|\bav\.\s|\bestrada\s|\brodovia\s|\bcep\b)/i;
+
+const HOURS_RE = /(hor[aá]rio de (atendimento|funcionamento)|\bhor[aá]rios?\b|aberto (de|das|todos os dias)|funcionamento|seg(unda)?\s*(a|-|–)\s*sex|atendimento (de|das))/i;
+
+const MAP_RE = /(google\.[^\s"'<>]*\/maps|maps\.app\.goo\.gl|goo\.gl\/maps|waze\.com|maps\.google\.com)/i;
+
+const ECOMMERCE_RE = /(carrinho|checkout|finalizar compra|adicionar ao carrinho|comprar agora|sacola de compras|add to cart|shop now)/i;
+
+const CATALOG_RE = /(cat[aá]logo|produtos|nossa loja|loja virtual|cole[cç][aã]o|shop all|ver produtos)/i;
+
+const PAYMENT_RE = /(pix|cart[aã]o de cr[eé]dito|boleto|pagseguro|mercado pago|stripe|paypal|pagamento seguro|parcelamento|em at[eé] \d+x)/i;
+
+const SHIPPING_RE = /(frete|entrega|envio|troca|devolu[cç][aã]o|pol[ií]tica de troca|prazo de entrega)/i;
+
+const REVIEWS_RE = /(avalia[cç][oõ]es|estrelas|reviews?|nota \d|depoimentos?|coment[aá]rios de clientes)/i;
+
+const LOCAL_SCHEMA_RE = /(LocalBusiness|Store|Restaurant|MedicalBusiness|Dentist|HealthAndBeautyBusiness|AutoRepair|ProfessionalService|HomeAndConstructionBusiness|FoodEstablishment|LodgingBusiness)/i;
 
 const ANALYTICS_RE = [
   ['Google Analytics / GTM', /(googletagmanager|gtag\(|gtag\/js|google-analytics)/i],
@@ -287,6 +312,13 @@ function extractPage(htmlRaw, requestedUrl) {
       contact: /(contato|contact|suporte|support|fale conosco)/i.test(allHrefs),
       faq: /(faq|perguntas frequentes|d[uú]vidas)/i.test(allHrefs),
       login: /(login|entrar|sign in|acessar)/i.test(allHrefs),
+      whatsapp: /(wa\.me|api\.whatsapp\.com|whatsapp:\/\/)/i.test(allHrefs),
+      phone: /(^|\s)tel:/i.test(allHrefs),
+      maps: MAP_RE.test(allHrefs),
+      cart: /(carrinho|cart|checkout|comprar|add to cart)/i.test(allHrefs),
+      catalog: /(produtos|catalogo|cat[aá]logo|loja|shop|cole[cç][aã]o)/i.test(allHrefs),
+      services: /(servi[cç]os|especialidades|tratamentos|solu[cç][oõ]es)/i.test(allHrefs),
+      portfolio: /(portf[oó]lio|projetos|cases|galeria)/i.test(allHrefs),
     },
     counts: {
       scripts: (html.match(/<script\b/gi) || []).length,
@@ -312,6 +344,21 @@ function extractPage(htmlRaw, requestedUrl) {
       pricingAnchor: /(planos?|pricing|pre[cç]os?)/i.test(h2.join(' ')),
       screenshot: /(screenshot|captura de tela|telas? do app|preview)/i.test(text)
         || /<img\b[^>]*alt\s*=\s*["'][^"']*(tela|captura|screenshot|app)[^"']*["']/i.test(html),
+      address: ADDRESS_RE.test(text) || jsonLd.some((type) => /PostalAddress/i.test(type)),
+      hours: HOURS_RE.test(text),
+      phone: /(^|\s)tel:/i.test(allHrefs) || /(\(?\d{2}\)?\s?9?\d{4}[-.\s]?\d{4})/.test(text),
+      whatsapp: /(wa\.me|api\.whatsapp\.com|whatsapp:\/\/)/i.test(allHrefs) || /whatsapp/i.test(text),
+      map: MAP_RE.test(allHrefs) || MAP_RE.test(text),
+      ecommerce: ECOMMERCE_RE.test(text) || ECOMMERCE_RE.test(allHrefs) || jsonLd.some((type) => /Product|Offer|ItemList/i.test(type)),
+      catalog: CATALOG_RE.test(text) || CATALOG_RE.test(allHrefs),
+      quote: QUOTE_RE.test(text),
+      portfolio: PORTFOLIO_RE.test(text) || PORTFOLIO_RE.test(allHrefs),
+      services: /(servi[cç]os|especialidades|tratamentos|solu[cç][oõ]es)/i.test(text),
+      institutional: /(quem somos|sobre n[oó]s|nossa hist[oó]ria|miss[aã]o|vis[aã]o|valores)/i.test(text),
+      payment: PAYMENT_RE.test(text),
+      shipping: SHIPPING_RE.test(text),
+      reviews: REVIEWS_RE.test(text),
+      localBusiness: jsonLd.some((type) => LOCAL_SCHEMA_RE.test(type)),
     },
     htmlBytes: lower.length,
   };
@@ -344,22 +391,53 @@ function inferBusiness(sig) {
     ? best.label
     : 'não identificada com segurança — confirme a categoria com o fundador';
 
-  let model = 'não publicado na página';
-  if (sig.flags.freeTrial) model = 'freemium com teste grátis';
-  else if (sig.flags.pricing && /(assinatura|subscription|\/\s*m[eê]s|per month|mensalidade|anual)/i.test(haystack)) model = 'assinatura recorrente';
-  else if (sig.flags.pricing) model = 'plano pago / compra única';
-  else if (/(gr[aá]tis|free|gratuito)/i.test(haystack)) model = 'gratuito (monetização não declarada)';
-
   const platforms = [];
   if (sig.store.ios) platforms.push('iOS (App Store)');
   if (sig.store.android) platforms.push('Android (Google Play)');
+
+  const wantsApp = platforms.length > 0
+    || sig.appBanner
+    || /(baixe|baixar|download|instale|instalar)[^.]{0,40}(app|aplicativo)|(app|aplicativo)[^.]{0,40}(baixe|baixar|download|instale)/i.test(haystack)
+    || sig.jsonLd.some((type) => /MobileApplication/i.test(type));
+
+  const ecommerce = !!sig.links.cart || sig.jsonLd.some((type) => /Product/i.test(type));
+  const localCategory = /(restaurante|cl[ií]nica|consult[oó]rio|sal[aã]o de beleza|barbearia|academia|advogad|escrit[oó]rio|odont|oficina|padaria|pet ?shop|hotel|pousada|imobili[aá]ria)/i.test(haystack);
+  const local = sig.flags.localBusiness || (localCategory && sig.flags.address);
+
+  let kind = 'institucional';
+  if (wantsApp) kind = 'app';
+  else if (ecommerce) kind = 'ecommerce';
+  else if (local) kind = 'local';
+  else if (sig.links.login && sig.flags.pricing) kind = 'saas';
+
+  let model = 'não publicado na página';
+  if (kind === 'ecommerce') model = 'venda direta no site';
+  else if (kind === 'local') model = 'serviço local, orçamento ou visita';
+  else if (kind === 'app' && sig.flags.freeTrial) model = 'app com teste grátis';
+  else if (sig.flags.pricing && /(assinatura|subscription|\/\s*m[eê]s|per month|mensalidade|anual)/i.test(haystack)) model = 'assinatura recorrente';
+  else if (sig.flags.pricing) model = 'plano pago / compra única';
+  else if (sig.flags.quote) model = 'orçamento sob consulta';
+  else if (/(gr[aá]tis|free|gratuito)/i.test(haystack)) model = 'gratuito (monetização não declarada)';
+
+  const typeLabels = {
+    app: 'site/landing de app mobile',
+    ecommerce: 'loja virtual / e-commerce',
+    local: 'site de negócio local',
+    saas: 'site de SaaS/serviço digital',
+    institucional: 'site institucional / presença digital',
+    site: 'site/landing',
+  };
 
   return {
     category,
     categoryConfidence: best && best.hits >= 2 ? Math.min(0.9, 0.45 + best.hits * 0.05) : 0.2,
     model,
     platforms,
-    type: platforms.length ? 'landing de app mobile' : 'site/landing (app não detectado)',
+    type: typeLabels[kind] || typeLabels.institucional,
+    kind,
+    wantsApp,
+    ecommerce,
+    local,
   };
 }
 
@@ -407,24 +485,60 @@ function scoreClarity(sig) {
   return mk('clarity', 'Clareza da proposta de valor', 20, s, ev);
 }
 
-function scoreCta(sig) {
+function scoreCta(sig, inferred) {
   const ev = [];
   let s = 0;
   const cta = sig.anchors.cta;
+  const app = inferred.wantsApp;
+  const ecommerce = inferred.kind === 'ecommerce';
+
   if (cta.length >= 1) s += 2;
   else ev.push('Nenhum CTA reconhecível na página.');
   if (cta.length >= 2) s += 1;
-  if (sig.store.ios && sig.store.android) {
-    s += 2;
-    ev.push('Badges/links das duas lojas presentes.');
-  } else if (sig.store.ios || sig.store.android) {
-    s += 1;
-    ev.push(`Só há link para ${sig.store.ios ? 'App Store' : 'Google Play'}.`);
+
+  if (app) {
+    if (sig.store.ios && sig.store.android) {
+      s += 2;
+      ev.push('Links das duas lojas presentes.');
+    } else if (sig.store.ios || sig.store.android) {
+      s += 1;
+      ev.push(`Só há link para ${sig.store.ios ? 'App Store' : 'Google Play'}.`);
+    } else {
+      ev.push('Site fala em app, mas não há link para as lojas.');
+    }
   } else {
-    ev.push('Sem link para App Store/Google Play: a instalação depende de busca manual.');
+    if (sig.links.whatsapp) {
+      s += 1.5;
+      ev.push('WhatsApp clicável presente.');
+    } else if (sig.links.phone || sig.flags.phone) {
+      s += 1.5;
+      ev.push('Telefone de contato presente.');
+    } else {
+      ev.push('Sem WhatsApp ou telefone clicável para o próximo passo.');
+    }
+    if (sig.counts.forms > 0 || sig.links.contact) {
+      s += 1.5;
+      ev.push('Formulário/canal de contato presente.');
+    } else {
+      ev.push('Sem formulário de contato visível.');
+    }
   }
-  if (sig.appBanner || sig.appleLinks) s += 1;
-  else ev.push('Sem smart banner/App Links: quem abre no celular não é levado ao app.');
+
+  if (ecommerce) {
+    if (sig.links.cart) {
+      s += 1.5;
+      ev.push('Carrinho/checkout acessível.');
+    } else {
+      ev.push('Sem carrinho/checkout visível: a compra não fecha no site.');
+    }
+  } else if (app) {
+    if (sig.appBanner || sig.appleLinks) s += 1;
+    else ev.push('Sem smart banner/App Links para abrir o app instalado.');
+  } else if (sig.links.maps || sig.flags.address) {
+    s += 1;
+    ev.push('Endereço/mapa ajuda o cliente a chegar.');
+  }
+
   if (sig.counts.inputs >= 1 && sig.counts.inputs <= 5) s += 1.5;
   else if (sig.counts.inputs > 5) {
     s += 0.5;
@@ -432,9 +546,14 @@ function scoreCta(sig) {
   }
   if (sig.anchors.total <= 80) s += 1;
   else ev.push(`Muitos links no caminho (${sig.anchors.total}): competem com o CTA.`);
-  if (sig.store.ios || sig.store.android || sig.links.contact) s += 1.5;
-  else ev.push('Nenhum caminho de conversão claro (loja ou contato).');
-  return mk('cta', 'CTA, instalação e caminho de conversão', 20, s, ev);
+
+  const direct = app
+    ? sig.store.ios || sig.store.android || sig.links.contact || sig.counts.forms > 0
+    : sig.links.whatsapp || sig.links.phone || sig.links.contact || sig.counts.forms > 0 || sig.links.cart || sig.links.maps;
+  if (direct) s += 1.5;
+  else ev.push('Nenhum caminho de conversão claro (WhatsApp, formulário, compra ou visita).');
+
+  return mk('cta', 'CTA e caminho de conversão', 20, s, ev);
 }
 
 function scoreTrust(sig) {
@@ -451,7 +570,7 @@ function scoreTrust(sig) {
   if (sig.flags.testimonial) s += 1.5;
   else ev.push('Sem depoimentos ou histórias de clientes.');
   if (sig.links.privacy) s += 1.5;
-  else ev.push('Sem link de privacidade/termos: quebra confiança e exigências de loja.');
+  else ev.push('Sem link de privacidade/termos: reduz confiança e transparência.');
   if (sig.links.contact) s += 1.5;
   else ev.push('Sem canal de contato/suporte visível.');
   if (sig.flags.press) s += 1;
@@ -459,27 +578,44 @@ function scoreTrust(sig) {
   return mk('trust', 'Confiança e prova social', 15, s, ev);
 }
 
-function scoreOffer(sig) {
+function scoreOffer(sig, inferred) {
   const ev = [];
   let s = 0;
+  const app = inferred.wantsApp;
   if (sig.flags.pricing) {
     s += 3;
     ev.push('Preço/planos mencionados na página.');
-  } else {
-    ev.push('Preço não aparece: o visitante precisa pedir/descobrir para avaliar.');
-  }
-  if (sig.flags.pricingAnchor || sig.links.pricing) s += 2;
-  else ev.push('Sem comparação de planos.');
-  if (sig.flags.freeTrial) {
+  } else if (sig.flags.quote) {
     s += 2;
-    ev.push('Teste grátis/freemium declarado.');
+    ev.push('A página explica como pedir orçamento/avaliação.');
   } else {
-    ev.push('Sem teste grátis explícito.');
+    ev.push('Preço ou caminho de orçamento não aparece: o visitante precisa descobrir sozinho.');
+  }
+  if (sig.flags.pricingAnchor || sig.links.pricing) {
+    s += 2;
+  } else if (sig.flags.services) {
+    s += 1.5;
+    ev.push('Serviços/especialidades descritos, mas sem comparação de planos.');
+  } else {
+    ev.push('Sem comparação de planos ou escopo de serviços.');
+  }
+  if (app) {
+    if (sig.flags.freeTrial) {
+      s += 2;
+      ev.push('Teste grátis/freemium declarado.');
+    } else {
+      ev.push('Sem teste grátis explícito.');
+    }
+  } else if (sig.flags.portfolio || sig.flags.socialProof) {
+    s += 2;
+    ev.push('Portfólio/prova de resultado ajuda a justificar o investimento.');
+  } else {
+    ev.push('Sem portfólio/cases para sustentar o valor cobrado.');
   }
   if (sig.flags.guarantee) s += 1.5;
-  else ev.push('Sem garantia/cancelamento fácil visível.');
+  else ev.push('Sem garantia, prazo ou condição de cancelamento visível.');
   if (/(anual|annual|economize|save \d+%|2 meses gr[aá]tis)/i.test(sig.text)) s += 1.5;
-  return mk('offer', 'Oferta e transparência de preço', 12, s, ev);
+  return mk('offer', 'Oferta, serviços e transparência', 12, s, ev);
 }
 
 function scoreUx(sig) {
@@ -535,19 +671,66 @@ function scoreApp(sig) {
   if (sig.flags.screenshot) s += 1.5;
   else ev.push('Sem prévia visual das telas do app.');
   if (sig.links.login) s += 1;
-  return mk('app', 'Integração com as lojas e funil do app', 10, s, ev);
+  return mk('app', 'Integração com app e lojas', 10, s, ev);
 }
 
-function scoreSite(sig) {
-  return [
+function scoredByChecks(id, label, weight, checks) {
+  const possible = checks.reduce((acc, check) => acc + check.max, 0) || 1;
+  const points = checks.reduce((acc, check) => acc + (check.ok ? check.max : 0), 0);
+  const ev = checks.map((check) => (check.ok ? check.good : check.bad)).filter(Boolean);
+  return mk(id, label, weight, (points / possible) * 10, ev);
+}
+
+function scorePresence(sig, inferred) {
+  const local = inferred.kind === 'local';
+  const hasPhone = sig.links.phone || sig.links.whatsapp || sig.flags.phone;
+  const hasContact = sig.counts.forms > 0 || sig.links.contact;
+  const checks = [
+    { ok: hasPhone, max: 2.5, good: 'Telefone/WhatsApp acessível para contato.', bad: 'Sem telefone/WhatsApp clicável para o cliente falar.' },
+    { ok: hasContact, max: 2, good: 'Formulário ou canal de contato presente.', bad: 'Sem formulário/canal de contato visível.' },
+  ];
+  if (local) {
+    checks.push(
+      { ok: sig.flags.address, max: 2, good: 'Endereço publicado na página.', bad: 'Sem endereço visível para quem quer visitar.' },
+      { ok: sig.links.maps || sig.flags.map, max: 1.5, good: 'Mapa/rota disponível.', bad: 'Sem mapa ou link de rota.' },
+      { ok: sig.flags.hours, max: 1.5, good: 'Horário de atendimento informado.', bad: 'Sem horário de atendimento.' },
+      { ok: sig.flags.localBusiness, max: 1, good: 'Dados estruturados de negócio local (schema).', bad: 'Sem schema de negócio local para o Google.' },
+    );
+  } else {
+    checks.push(
+      { ok: sig.flags.services || sig.links.services, max: 2, good: 'Serviços/soluções descritos na página.', bad: 'Sem página ou seção clara de serviços.' },
+      { ok: sig.flags.portfolio || sig.flags.socialProof, max: 1.5, good: 'Portfólio/cases ou prova de resultado presente.', bad: 'Sem portfólio/cases para gerar confiança.' },
+      { ok: sig.links.whatsapp || sig.links.contact || sig.flags.phone, max: 1, good: 'Canal direto de contato visível.', bad: 'Sem canal direto de contato.' },
+    );
+  }
+  return scoredByChecks('presence', 'Canais de contato e presença digital', 10, checks);
+}
+
+function scoreCommerce(sig) {
+  const checks = [
+    { ok: sig.flags.catalog || sig.links.catalog, max: 2.5, good: 'Catálogo/produtos acessível.', bad: 'Sem catálogo ou listagem de produtos clara.' },
+    { ok: sig.links.cart || sig.flags.ecommerce, max: 2.5, good: 'Carrinho/checkout presente.', bad: 'Sem carrinho/checkout visível.' },
+    { ok: sig.flags.payment, max: 1.5, good: 'Formas de pagamento e segurança sinalizadas.', bad: 'Sem informação clara de pagamento/segurança.' },
+    { ok: sig.flags.shipping, max: 1.5, good: 'Frete, entrega ou troca explicados.', bad: 'Sem política de frete/entrega/troca.' },
+    { ok: sig.counts.images >= 3, max: 1, good: 'Fotos de produto presentes.', bad: 'Poucas fotos de produto.' },
+    { ok: sig.flags.reviews || sig.flags.socialProof, max: 1, good: 'Avaliações/prova social de compra.', bad: 'Sem avaliações de clientes.' },
+  ];
+  return scoredByChecks('commerce', 'Experiência de compra e catálogo', 10, checks);
+}
+
+function scoreSite(sig, inferred) {
+  const scores = [
     scoreClarity(sig),
-    scoreCta(sig),
+    scoreCta(sig, inferred),
     scoreTrust(sig),
-    scoreOffer(sig),
+    scoreOffer(sig, inferred),
     scoreUx(sig),
     scoreSeo(sig),
-    scoreApp(sig),
   ];
+  if (inferred.wantsApp) scores.push(scoreApp(sig));
+  else if (inferred.kind === 'ecommerce') scores.push(scoreCommerce(sig));
+  else scores.push(scorePresence(sig, inferred));
+  return scores;
 }
 
 /* ------------------------------------------------------------------ *
@@ -561,22 +744,61 @@ function uxBacklog(sig, scores, inferred) {
       items.push({ priority, action, why, impact, effort });
     }
   };
+  const app = inferred.wantsApp;
+  const local = inferred.kind === 'local';
+  const ecommerce = inferred.kind === 'ecommerce';
 
-  if (!sig.store.ios || !sig.store.android) {
-    add('P0', 'Colocar badges oficiais da App Store e do Google Play acima da dobra, com QR code ao lado.',
-      'Sem link de loja a instalação vira busca manual; é o maior vazamento do funil.', 'alto', 'baixo');
+  if (app && (!sig.store.ios || !sig.store.android)) {
+    add('P1', 'Se o app for prioridade, colocar badges oficiais da App Store e do Google Play com QR code ao lado.',
+      'O site já fala em app, mas sem link de loja a instalação vira busca manual. Avalie se o app é mesmo o foco.', 'médio', 'baixo');
   }
   if (!sig.anchors.cta.length) {
-    add('P0', 'Definir um CTA primário único com verbo de ação e benefício (“Baixar grátis e criar conta em 1 min”).',
+    add('P0', app
+      ? 'Definir um CTA primário único com verbo de ação e benefício (“Baixar grátis e criar conta em 1 min”).'
+      : 'Definir um CTA primário único com verbo de ação (“Fale no WhatsApp”, “Solicite orçamento” ou “Agende”).',
       'Sem CTA reconhecível o visitante não sabe qual é o próximo passo.', 'alto', 'baixo');
   }
-  if (!sig.flags.socialProof) {
-    add('P0', 'Adicionar prova social concreta: nota das lojas, nº de downloads e 2–3 depoimentos com nome e resultado.',
-      'Prova social é o principal redutor de risco em landing de app.', 'alto', 'médio');
+  if (ecommerce && !sig.links.cart) {
+    add('P0', 'Deixar o carrinho/checkout acessível em todas as páginas de produto, com compra em poucos toques.',
+      'Sem caminho de compra visível o visitante pesquisa e compra em outro site.', 'alto', 'médio');
   }
-  if (!sig.flags.pricing && inferred.model !== 'gratuito (monetização não declarada)') {
-    add('P1', 'Publicar preço ou faixa de preço (e o que é grátis), mesmo que em “planos”.',
-      'Preço escondido aumenta abandono e atrai curioso sem intenção de compra.', 'alto', 'baixo');
+  if (!app && !ecommerce && !sig.links.whatsapp && !sig.links.phone && sig.counts.forms === 0 && !sig.links.contact) {
+    add('P0', 'Criar um canal de contato direto (WhatsApp, telefone clicável ou formulário curto) acima da dobra.',
+      'Sem caminho de contato o interesse gerado pela página não vira conversa.', 'alto', 'baixo');
+  }
+  if (!sig.flags.socialProof && !ecommerce) {
+    add('P0', app
+      ? 'Adicionar prova social concreta: nota das lojas, nº de downloads e 2–3 depoimentos com nome e resultado.'
+      : 'Adicionar prova social concreta: avaliações do Google, clientes atendidos, casos e 2–3 depoimentos com nome e resultado.',
+      'Prova social é o principal redutor de risco na decisão de compra.', 'alto', 'médio');
+  }
+  if (local && !sig.flags.address) {
+    add('P0', 'Publicar endereço completo, ponto de referência e botão de rota para o Google Maps.',
+      'Negócio local sem endereço perde quem está perto e pronto para visitar.', 'alto', 'baixo');
+  }
+  if (local && !sig.flags.hours) {
+    add('P1', 'Informar horário de atendimento e destacar se está aberto agora.',
+      'Horário evita visita perdida e reduz mensagens repetidas.', 'médio', 'baixo');
+  }
+  if (local && !sig.links.maps && !sig.flags.map) {
+    add('P1', 'Integrar mapa e link “como chegar” com a localização do negócio.',
+      'O cliente decide visitar quando encontra o caminho em um toque.', 'médio', 'baixo');
+  }
+  if (local && !sig.flags.localBusiness) {
+    add('P2', 'Adicionar schema LocalBusiness (endereço, telefone, horário) e manter o Google Business Profile atualizado.',
+      'Ajuda o negócio a aparecer no Google Maps e em buscas locais.', 'médio', 'baixo');
+  }
+  if (ecommerce && !sig.flags.payment) {
+    add('P1', 'Exibir formas de pagamento, parcelamento e selos de segurança junto ao botão de compra.',
+      'Pagamento e segurança visíveis reduzem abandono no checkout.', 'alto', 'baixo');
+  }
+  if (ecommerce && !sig.flags.shipping) {
+    add('P1', 'Explicar prazo de entrega, frete e política de troca antes do checkout.',
+      'Custo e prazo escondidos são as principais objeções de e-commerce.', 'alto', 'baixo');
+  }
+  if (!sig.flags.pricing && !sig.flags.quote) {
+    add('P1', 'Publicar faixa de preço, planos ou explicar como pedir orçamento, com o que está incluído.',
+      'Preço ou caminho de orçamento escondido aumenta abandono e atrai curioso sem intenção de compra.', 'alto', 'baixo');
   }
   if (!sig.description || sig.description.length < 50) {
     add('P1', 'Reescrever title e meta description com promessa + público + categoria (30–65 e 50–170 caracteres).',
@@ -586,29 +808,39 @@ function uxBacklog(sig, scores, inferred) {
     add('P1', 'Reescrever o H1 como promessa específica (quem + resultado + tempo).',
       'O H1 é o teste de 5 segundos da proposta de valor.', 'alto', 'baixo');
   }
+  if (!sig.flags.portfolio && !app && !ecommerce) {
+    add('P2', 'Criar uma seção de portfólio/cases com fotos reais, escopo e resultado de cada trabalho.',
+      'Mostrar trabalhos anteriores encurta a decisão de quem ainda não conhece a marca.', 'médio', 'médio');
+  }
   if (!sig.counts.videos && sig.counts.images < 10) {
-    add('P2', 'Inserir um vídeo curto (20–40s) ou 3–5 capturas reais do app mostrando o fluxo principal.',
-      'Mostrar o produto reduz a imaginação errada e aumenta a instalação qualificada.', 'médio', 'médio');
+    add('P2', app
+      ? 'Inserir um vídeo curto (20–40s) ou 3–5 capturas reais do app mostrando o fluxo principal.'
+      : 'Inserir um vídeo curto (20–40s) ou fotos reais do serviço/produto e do atendimento.',
+      'Mostrar o produto ou o serviço reduz a imaginação errada e qualifica o contato.', 'médio', 'médio');
   }
   if (sig.counts.scripts > 25) {
     add('P2', 'Reduzir scripts de terceiros e carregar pixel/analytics depois da primeira dobra.',
       `A página tem ${sig.counts.scripts} scripts; isso penaliza LCP/INP no celular.`, 'médio', 'médio');
   }
   if (!sig.flags.faq) {
-    add('P2', 'Adicionar FAQ de 5–6 objeções reais (preço, cancelamento, dados, compatibilidade).',
+    add('P2', 'Adicionar FAQ de 5–6 objeções reais (preço, prazo, cancelamento, dados, atendimento).',
       'FAQ captura dúvidas de compra e ganha espaço no Google.', 'médio', 'baixo');
   }
-  if (!sig.appBanner) {
+  if (app && !sig.appBanner) {
     add('P2', 'Configurar smart banner (iOS) e App Links/Play Install Referrer para abrir o app instalado.',
       'Quem já tem o app não deveria passar pelo funil da loja.', 'baixo', 'médio');
   }
+  if (ecommerce && !sig.flags.reviews) {
+    add('P2', 'Adicionar avaliações de clientes nas páginas de produto e na home.',
+      'Avaliações reais aumentam a confiança e a conversão da loja.', 'médio', 'médio');
+  }
   if (sig.counts.images && sig.counts.imagesWithAlt / Math.max(1, sig.counts.images) < 0.6) {
-    add('P3', 'Preencher alt text descritivo em todas as imagens de produto.',
+    add('P3', 'Preencher alt text descritivo em todas as imagens de produto/serviço.',
       'Acessibilidade e SEO de imagem, com custo quase zero.', 'baixo', 'baixo');
   }
   if (!sig.links.privacy) {
     add('P3', 'Adicionar links de privacidade e termos no rodapé.',
-      'Exigência das lojas e sinal de confiança para o usuário.', 'baixo', 'baixo');
+      'Transparência, LGPD e confiança para o usuário.', 'baixo', 'baixo');
   }
 
   const order = { P0: 0, P1: 1, P2: 2, P3: 3 };
@@ -634,7 +866,7 @@ function renderAudit({ sig, scores, total, inferred, backlog, url, status }) {
   lines.push(`- **Tipo:** ${inferred.type}`);
   lines.push(`- **Categoria provável:** ${inferred.category} (confiança ${Math.round(inferred.categoryConfidence * 100)}%)`);
   lines.push(`- **Modelo de receita provável:** ${inferred.model}`);
-  lines.push(`- **Plataformas detectadas:** ${inferred.platforms.length ? inferred.platforms.join(', ') : 'nenhuma loja linkada'}`);
+  lines.push(`- **Plataformas detectadas:** ${inferred.platforms.length ? inferred.platforms.join(', ') : inferred.wantsApp ? 'app mencionado, mas sem loja linkada' : 'não se aplica (site sem app declarado)'}`);
   lines.push('');
   lines.push('## Scorecard (0–10, ponderado)');
   lines.push('');
@@ -652,7 +884,7 @@ function renderAudit({ sig, scores, total, inferred, backlog, url, status }) {
     lines.push(`- **${dim.label}:** ${relevant.slice(0, 4).join(' ')}`);
   }
   lines.push('');
-  lines.push('## Backlog UX/UI priorizado');
+  lines.push('## Backlog de melhorias priorizado');
   lines.push('');
   lines.push('| Prio | Ação | Por quê | Impacto | Esforço |');
   lines.push('|---|---|---|---|---|');
@@ -663,7 +895,7 @@ function renderAudit({ sig, scores, total, inferred, backlog, url, status }) {
   const weakest = [...scores].sort((a, b) => a.score - b.score).slice(0, 3);
   lines.push('## Leitura do CEO');
   lines.push(`O maior vazamento está em **${weakest[0].label}** (${weakest[0].score.toFixed(1)}/10), seguido de ${weakest[1].label} (${weakest[1].score.toFixed(1)}) e ${weakest[2].label} (${weakest[2].score.toFixed(1)}).`);
-  lines.push('Antes de comprar mídia, feche os P0 do backlog: corrigir a promessa, o caminho de instalação e a prova social costuma subir conversão sem aumentar o CAC.');
+  lines.push('Antes de comprar mídia, feche os P0 do backlog: corrigir a promessa, o caminho de conversão e a prova social costuma subir conversão sem aumentar o CAC.');
   return lines.join('\n');
 }
 
@@ -708,9 +940,9 @@ async function auditSite(ctx, url, signal) {
     throw new Error(`O site respondeu HTTP ${page.status} em ${page.url}. Confira a URL e tente novamente.`);
   }
   const sig = extractPage(page.html, page.url);
-  const scores = scoreSite(sig);
-  const total = totalScore(scores);
   const inferred = inferBusiness(sig);
+  const scores = scoreSite(sig, inferred);
+  const total = totalScore(scores);
   const backlog = uxBacklog(sig, scores, inferred);
   const markdown = renderAudit({ sig, scores, total, inferred, backlog, url: page.url, status: page.status });
   return { url: page.url, status: page.status, sig, scores, total, inferred, backlog, markdown };
@@ -752,11 +984,11 @@ async function discoverCompetitors(ctx, args, signal) {
 
   const categoryWords = (keywords || category).split(/[,;/]+/).map((s) => s.trim()).filter(Boolean);
   const queries = [];
-  if (appName) queries.push(`alternativas a ${appName} aplicativo`);
-  if (category) queries.push(`melhores apps de ${category} ${region}`);
+  if (appName) queries.push(`alternativas a ${appName}`);
+  if (category) queries.push(`melhores empresas de ${category} ${region}`);
   if (appName && category) queries.push(`${appName} concorrentes ${category}`);
-  if (keywords) queries.push(`${keywords} aplicativo ${region}`);
-  if (!queries.length) queries.push(`${appName || category || 'aplicativo'} app ${region}`);
+  if (keywords) queries.push(`${keywords} ${region}`);
+  if (!queries.length) queries.push(`${appName || category || 'empresa'} ${region}`);
 
   const found = new Map();
   for (const query of queries.slice(0, 4)) {
@@ -850,12 +1082,14 @@ async function discoverCompetitors(ctx, args, signal) {
 
 const DIMENSION_ACTIONS = {
   clarity: 'Reescrever H1/meta com promessa específica e número concreto.',
-  cta: 'Unificar CTA primário e colocar badges das duas lojas + QR acima da dobra.',
-  trust: 'Subir nota das lojas, nº de downloads e 2 depoimentos com resultado.',
-  offer: 'Publicar planos e o que é grátis; incluir teste e cancelamento.',
-  ux: 'Enxugar scripts, mostrar o app em vídeo e revisar o layout no celular.',
-  seo: 'Corrigir title/description, H1 único e adicionar JSON-LD de SoftwareApplication.',
+  cta: 'Unificar um CTA primário (WhatsApp, formulário, compra ou rota) e remover links que competem.',
+  trust: 'Subir avaliações, clientes atendidos, casos e 2 depoimentos com resultado.',
+  offer: 'Publicar planos/faixa de preço ou explicar como pedir orçamento; incluir garantia e prazo.',
+  ux: 'Enxugar scripts, mostrar produto/serviço em vídeo ou fotos reais e revisar o layout no celular.',
+  seo: 'Corrigir title/description, H1 único e adicionar JSON-LD adequado ao tipo de negócio.',
   app: 'Adicionar smart banner, deep links e avaliações das lojas na landing.',
+  presence: 'Publicar canais de contato, endereço/mapa/horário quando local e portfólio/cases.',
+  commerce: 'Melhorar catálogo, checkout, pagamento, frete e avaliações de produto.',
 };
 
 async function runBenchmark(ctx, args, signal) {

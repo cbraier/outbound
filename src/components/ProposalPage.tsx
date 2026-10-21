@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { type Lead } from "@/lib/types";
 import { chargeDood, getWallet, priceOf, type DoodPrice } from "@/lib/dood";
 import { findBrandLogo, uploadBrandLogo } from "@/lib/brand";
 import {
@@ -38,12 +39,12 @@ import {
 } from "lucide-react";
 
 type Profile = {
-  nome: string | null;
+  nome?: string | null;
   company?: string | null;
-  site: string | null;
+  site?: string | null;
   socials?: Record<string, string> | null;
-  ai_provider: string | null;
-  ai_api_key: string | null;
+  ai_provider?: string | null;
+  ai_api_key?: string | null;
 };
 
 const TYPES: ProposalType[] = ["site", "app", "sistema", "site_app"];
@@ -95,13 +96,19 @@ function linesText(v: string[]): string {
 export default function ProposalPage({
   userId,
   profile,
+  lead,
+  embedded = false,
   onGoToDoods,
   onRefresh,
+  onSiteChange,
 }: {
   userId: string;
   profile: Profile | null;
+  lead?: Lead | null;
+  embedded?: boolean;
   onGoToDoods?: () => void;
   onRefresh?: () => void;
+  onSiteChange?: (site: string) => void;
 }) {
   const [conversation, setConversation] = useState("");
   const [images, setImages] = useState<{ name: string; b64: string }[]>([]);
@@ -121,7 +128,8 @@ export default function ProposalPage({
   const [pricing, setPricing] = useState<DoodPrice[]>([]);
   const [balance, setBalance] = useState<number>(0);
   const [logoBusy, setLogoBusy] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(true);
+  const [historyOpen, setHistoryOpen] = useState(!embedded);
+  const rootRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const logoRef = useRef<HTMLInputElement>(null);
 
@@ -145,10 +153,50 @@ export default function ProposalPage({
     };
   }, [userId, profile?.socials?._logo, profile?.socials?._brand_color]);
 
+  useEffect(() => {
+    setAuditSite(lead?.site || "");
+    setAudit(null);
+    setIncludeAudit(true);
+    setConversation("");
+    setNotes("");
+    setImages([]);
+    setDraft(null);
+    setErr("");
+    setInfo("");
+  }, [lead?.id]);
+
+  useEffect(() => {
+    if (!audit && !draft) setAuditSite((current) => current || lead?.site || "");
+  }, [lead?.site, audit, draft]);
+
   const brand = useMemo(
     () => proposalBrandFromProfile(profile || { nome: "", company: "", site: "", socials: {} }, logoUrl),
     [profile, logoUrl],
   );
+
+  const leadContext = useMemo(() => {
+    if (!lead) return "";
+    return [
+      "DADOS DO LEAD (use para preencher cliente e contexto, sem inventar):",
+      `Empresa: ${lead.nome || "não informada"}`,
+      `Contato/telefone: ${lead.telefone || "não informado"}`,
+      `Site: ${lead.site || "não informado"}`,
+      `Categoria: ${lead.categoria || "não informada"}`,
+      `Endereço: ${[lead.endereco, lead.cidade, lead.estado].filter(Boolean).join(", ") || "não informado"}`,
+      `Rede social: ${lead.rede_social || "não informada"}`,
+      lead.web_research ? `Pesquisa web: ${lead.web_research.slice(0, 900)}` : "",
+    ].filter(Boolean).join("\n");
+  }, [lead]);
+
+  const scopedProposals = useMemo(() => {
+    if (!lead) return proposals;
+    const leadName = (lead.nome || "").trim().toLowerCase();
+    return proposals.filter((p) => {
+      if (p.lead_id) return p.lead_id === lead.id;
+      const legacyName = (p.cliente.empresa || p.cliente.nome || "").trim().toLowerCase();
+      return !!leadName && legacyName === leadName;
+    });
+  }, [proposals, lead]);
 
   const setClient = (patch: Partial<SavedProposal["cliente"]>) =>
     setDraft((d) => (d ? { ...d, cliente: { ...d.cliente, ...patch } } : d));
@@ -209,7 +257,7 @@ export default function ProposalPage({
     }
     setBusy(true);
     try {
-      const ch = await chargeDood("proposal_analyze");
+      const ch = await chargeDood("proposal_analyze", lead?.id);
       if (!ch.ok) {
         setBalance(ch.balance);
         if (ch.message === "unknown_action") setErr("A ação de proposta ainda não está configurada no servidor.");
@@ -218,7 +266,7 @@ export default function ProposalPage({
       }
       setBalance(ch.balance);
       const auditContext = audit && includeAudit ? auditToProposalContext(audit) : "";
-      const proposalNotes = [auditContext, notes].filter(Boolean).join("\n\n").slice(0, 2000);
+      const proposalNotes = [auditContext, leadContext, notes].filter(Boolean).join("\n\n").slice(0, 3000);
       const generated = await generateProposal({
         conversation,
         images: images.map((i) => i.b64),
@@ -228,10 +276,24 @@ export default function ProposalPage({
         provider: profile?.ai_provider,
         apiKey: profile?.ai_api_key,
       });
+      const leadCity = lead ? [lead.cidade, lead.estado].filter(Boolean).join(" / ") : "";
+      const withLead = lead
+        ? {
+            ...generated,
+            cliente: {
+              ...generated.cliente,
+              empresa: lead.nome || generated.cliente.empresa,
+              contato: lead.telefone || generated.cliente.contato,
+              segmento: lead.categoria || generated.cliente.segmento,
+              cidade: leadCity || generated.cliente.cidade,
+            },
+          }
+        : generated;
       const now = new Date().toISOString();
       const saved: SavedProposal = {
-        ...generated,
+        ...withLead,
         id: newId(),
+        lead_id: lead?.id,
         created_at: now,
         updated_at: now,
         status: "rascunho",
@@ -262,7 +324,7 @@ export default function ProposalPage({
         const out = await downloadOrSharePdf({ ...draft, marca: { ...draft.marca, logo_url: logoUrl || undefined, cor: brandColor } });
         blob = out.blob;
       }
-      const final = await saveProposal(userId, { ...draft, status: pdf ? "pronta" : draft.status, marca: { ...draft.marca, logo_url: logoUrl || undefined, cor: brandColor } }, blob);
+      const final = await saveProposal(userId, { ...draft, lead_id: draft.lead_id || lead?.id, status: pdf ? "pronta" : draft.status, marca: { ...draft.marca, logo_url: logoUrl || undefined, cor: brandColor } }, blob);
       setDraft(final);
       setProposals((p) => [final, ...p.filter((x) => x.id !== final.id)]);
       setInfo(pdf ? "PDF gerado e proposta salva. Use o botão para abrir ou compartilhar." : "Proposta salva.");
@@ -277,10 +339,15 @@ export default function ProposalPage({
   const novaProposta = () => {
     setDraft(null);
     setAudit(null);
-    setAuditSite("");
+    setAuditSite(lead?.site || "");
     setIncludeAudit(true);
     setErr("");
     setInfo("");
+  };
+
+  const handleAudit = (value: AuditResult | null) => {
+    setAudit(value);
+    if (value?.url && lead && value.url !== lead.site) onSiteChange?.(value.url);
   };
 
   const abrir = (p: SavedProposal) => {
@@ -289,7 +356,8 @@ export default function ProposalPage({
     setBrandColor(p.marca.cor || DEFAULT_BRAND_COLOR);
     setInfo("");
     setErr("");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    if (embedded) rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    else window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const excluir = async (p: SavedProposal) => {
@@ -317,14 +385,16 @@ export default function ProposalPage({
   };
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4 pb-24">
+    <div ref={rootRef} className={embedded ? "space-y-4" : "mx-auto max-w-2xl space-y-4 pb-24"}>
       <div className="card overflow-hidden p-0">
-        <div className="bg-gradient-to-br from-brand-purple via-brand-magenta to-brand-pink px-5 py-5 text-white">
+        <div className={`bg-gradient-to-br from-brand-purple via-brand-magenta to-brand-pink text-white ${embedded ? "px-4 py-4" : "px-5 py-5"}`}>
           <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-white/75">
-            <FileText className="h-4 w-4" /> Propostas com IA
+            <FileText className="h-4 w-4" /> {embedded ? "Proposta deste lead" : "Propostas com IA"}
           </div>
-          <h2 className="mt-1 text-2xl font-black leading-tight">Da conversa ao PDF em minutos</h2>
-          <p className="mt-1 text-sm font-medium text-white/85">
+          <h2 className={`mt-1 font-black leading-tight ${embedded ? "text-lg" : "text-2xl"}`}>
+            {embedded ? (lead?.nome || "Da conversa ao PDF") : "Da conversa ao PDF em minutos"}
+          </h2>
+          <p className={`mt-1 font-medium text-white/85 ${embedded ? "text-xs" : "text-sm"}`}>
             Cole a conversa do WhatsApp ou envie prints. A IA monta o escopo, estima o prazo e gera uma proposta profissional com a sua marca.
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] font-semibold">
@@ -342,9 +412,10 @@ export default function ProposalPage({
             url={auditSite}
             onUrlChange={setAuditSite}
             audit={audit}
-            onAudit={setAudit}
+            onAudit={handleAudit}
             included={includeAudit}
             onIncludedChange={setIncludeAudit}
+            cost={cost}
           />
 
           <div className="card space-y-4 p-5">
@@ -598,14 +669,14 @@ export default function ProposalPage({
       <div className="card p-5">
         <button className="flex w-full items-center justify-between" onClick={() => setHistoryOpen((v) => !v)}>
           <span className="flex items-center gap-2 text-sm font-extrabold text-brand-deep">
-            <Clock className="h-4 w-4 text-brand-purple" /> Minhas propostas ({proposals.length})
+            <Clock className="h-4 w-4 text-brand-purple" /> {embedded ? "Propostas deste lead" : "Minhas propostas"} ({scopedProposals.length})
           </span>
           <span className="text-[11px] font-bold text-brand-ink/40">{historyOpen ? "Fechar" : "Abrir"}</span>
         </button>
         {historyOpen && (
           <div className="mt-3 space-y-2">
-            {proposals.length === 0 && <p className="text-xs text-brand-ink/50">Nenhuma proposta ainda. As propostas salvas ficam aqui e sincronizam com a sua conta.</p>}
-            {proposals.map((p) => (
+            {scopedProposals.length === 0 && <p className="text-xs text-brand-ink/50">Nenhuma proposta ainda. As propostas salvas ficam aqui e sincronizam com a sua conta.</p>}
+            {scopedProposals.map((p) => (
               <div key={p.id} className="rounded-xl border border-brand-purple/15 bg-white/60 p-3">
                 <div className="flex items-start justify-between gap-2">
                   <button className="min-w-0 text-left" onClick={() => abrir(p)}>

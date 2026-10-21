@@ -11,9 +11,8 @@ import { initBilling, hasActiveEntitlement, getCurrentOffering, isNative } from 
 import Radar from "@/components/Radar";
 import AgendaPage from "@/components/AgendaPage";
 import { type CapturedLead } from "@/components/PhotoCapture";
-import { LayoutGrid, User, LogOut, Plus, Radar as RadarIcon, Calendar as CalendarIcon, Eye, EyeOff, Coins, FileText } from "lucide-react";
+import { LayoutGrid, User, LogOut, Plus, Radar as RadarIcon, Calendar as CalendarIcon, Eye, EyeOff, Coins } from "lucide-react";
 import DoodsPage from "@/components/DoodsPage";
-import ProposalPage from "@/components/ProposalPage";
 
 interface ProfileRow {
   nome: string | null;
@@ -176,7 +175,7 @@ function NewPasswordScreen() {
 
 function Shell() {
   const { user, loading, signOut, recovery } = useAuth();
-  const [tab, setTab] = useState<"novo" | "proposta" | "board" | "radar" | "agenda" | "perfil" | "dood">("novo");
+  const [tab, setTab] = useState<"novo" | "board" | "radar" | "agenda" | "perfil" | "dood">("novo");
   const [agendaFocus, setAgendaFocus] = useState<Date | null>(null);
   const [showAuth, setShowAuth] = useState(false);
   const [entitled, setEntitled] = useState<boolean | null>(null);
@@ -285,10 +284,8 @@ function Shell() {
             onCaptured={onCaptured}
             profile={profile ? { ...profile, professional_profile: contextoDePerfil(profile) } : null}
             onRefresh={load}
+            onGoToDoods={() => setTab("dood")}
           />
-        )}
-        {tab === "proposta" && (
-          <ProposalPage userId={user.id} profile={profile} onGoToDoods={() => setTab("dood")} onRefresh={load} />
         )}
         {tab === "board" && (
           <Board
@@ -296,6 +293,7 @@ function Shell() {
             profile={profile ? { ...profile, professional_profile: contextoDePerfil(profile) } : null}
             onRefresh={load}
             onGoToAgenda={(d) => { setAgendaFocus(d || new Date()); setTab("agenda"); }}
+            onGoToDoods={() => setTab("dood")}
           />
         )}
         {tab === "radar" && (
@@ -303,6 +301,7 @@ function Shell() {
             leads={leads}
             profile={profile ? { ...profile, professional_profile: contextoDePerfil(profile) } : null}
             onRefresh={load}
+            onGoToDoods={() => setTab("dood")}
           />
         )}
         {tab === "agenda" && <AgendaPage focus={agendaFocus} />}
@@ -313,9 +312,6 @@ function Shell() {
       <nav className="fixed bottom-0 left-0 right-0 z-30 mx-auto flex max-w-md items-center justify-around border-t border-brand-pink/10 bg-white/85 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 backdrop-blur">
         <button onClick={() => setTab("novo")} className={`flex flex-col items-center gap-0.5 px-2 text-[10px] font-bold ${tab === "novo" ? "text-brand-pink" : "text-brand-ink/40"}`}>
           <Plus className="h-5 w-5" /> Novo
-        </button>
-        <button onClick={() => setTab("proposta")} className={`flex flex-col items-center gap-0.5 px-2 text-[10px] font-bold ${tab === "proposta" ? "text-brand-pink" : "text-brand-ink/40"}`}>
-          <FileText className="h-5 w-5" /> Proposta
         </button>
         <button onClick={() => setTab("board")} className={`flex flex-col items-center gap-0.5 px-2 text-[10px] font-bold ${tab === "board" ? "text-brand-pink" : "text-brand-ink/40"}`}>
           <LayoutGrid className="h-5 w-5" /> Funil

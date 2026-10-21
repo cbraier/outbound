@@ -127,7 +127,7 @@ export function auditToProposalContext(audit: AuditResult): string {
     .map((dim) => `${dim.label} (${dim.score.toFixed(1)}/10)`);
 
   const actions = audit.backlog
-    .filter((item) => item.priority === "P0" || item.priority === "P1")
+    .filter((item) => item.priority === "P0" || item.priority === "P1" || item.priority === "P2")
     .slice(0, 6)
     .map(
       (item) =>
@@ -135,10 +135,11 @@ export function auditToProposalContext(audit: AuditResult): string {
     );
 
   const parts = [
-    "AUDITORIA DO SITE DO CLIENTE (inclua estes ajustes no escopo e nos entregáveis como melhorias recomendadas pelo vendedor, sem inventar pedidos que o cliente não fez):",
-    `Site: ${hostOf(audit.url)} · Nota ${audit.total.toFixed(1)}/100`,
+    "AUDITORIA DO SITE DO CLIENTE (inclua no escopo e nos entregáveis apenas os ajustes que fizerem sentido para o tipo de negócio; são melhorias recomendadas pelo vendedor, não pedidos que o cliente fez):",
+    `Site: ${hostOf(audit.url)} · Nota ${audit.total.toFixed(1)}/100${audit.inferred?.type ? ` · ${audit.inferred.type}` : ""}`,
     weakest.length ? `Dimensões mais fracas: ${weakest.join("; ")}.` : "",
     actions.length ? `Ações prioritárias:\n${actions.join("\n")}` : "",
+    "Não force aplicativo, lojas ou badge de app se a auditoria e a conversa não indicarem essa necessidade.",
   ].filter(Boolean);
 
   return parts.join("\n").slice(0, 1700);

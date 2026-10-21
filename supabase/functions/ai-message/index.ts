@@ -302,7 +302,7 @@ Leia com atenção a conversa e os prints. Extraia apenas o que o cliente realme
 
 As "Observações do vendedor" podem conter uma "AUDITORIA DO SITE DO CLIENTE" com melhorias recomendadas. Trate essas melhorias como ofertas do vendedor: inclua os ajustes no escopo e nos entregáveis, explicando o ganho esperado, sem apresentá-los como pedidos do cliente e sem inventar além do que foi listado.
 
-O vendedor pode oferecer site, landing page, aplicativo, sistema sob medida ou combinação de site + app. Identifique o tipo mais adequado ao pedido.
+O vendedor pode oferecer site, landing page, aplicativo, sistema sob medida ou combinação de site + app. Identifique o tipo mais adequado ao pedido e à auditoria: nem todo negócio precisa de aplicativo. Sites institucionais, serviços locais e e-commerce devem receber melhorias de posicionamento, conversão, conteúdo, presença local e experiência — só proponha app quando a conversa ou o negócio justificarem.
 
 Use português do Brasil, tom profissional e direto, sem markdown e sem emojis.
 

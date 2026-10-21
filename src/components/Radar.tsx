@@ -82,10 +82,12 @@ export default function Radar({
   leads,
   profile,
   onRefresh,
+  onGoToDoods,
 }: {
   leads: Lead[];
   profile: RadarProfile | null;
   onRefresh: () => void;
+  onGoToDoods?: () => void;
 }) {
   const { user } = useAuth();
   const [open, setOpen] = useState<Lead | null>(null);
@@ -509,7 +511,7 @@ export default function Radar({
         Ponto de partida: {workAddress || "não definido"} · raio de {radiusKm} km. Ajuste acima, em Atendimento.
       </p>
 
-      {open && profile && <LeadDrawer lead={open} profile={profile} onClose={() => setOpen(null)} onSaved={() => { setOpen(null); onRefresh(); }} />}
+      {open && profile && <LeadDrawer lead={open} profile={profile} onClose={() => setOpen(null)} onSaved={() => { setOpen(null); onRefresh(); }} onGoToDoods={onGoToDoods} />}
     </div>
   );
 }

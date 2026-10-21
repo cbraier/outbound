@@ -17,11 +17,13 @@ export default function Board({
   profile,
   onRefresh,
   onGoToAgenda,
+  onGoToDoods,
 }: {
   leads: Lead[];
   profile: Parameters<typeof LeadDrawer>[0]["profile"] | null;
   onRefresh: () => void;
   onGoToAgenda?: (d?: Date) => void;
+  onGoToDoods?: () => void;
 }) {
   const [open, setOpen] = useState<Lead | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
@@ -167,6 +169,7 @@ export default function Board({
           onClose={() => setOpen(null)}
           onSaved={() => { setOpen(null); onRefresh(); }}
           onGoToAgenda={onGoToAgenda}
+          onGoToDoods={onGoToDoods}
         />
       )}
 
