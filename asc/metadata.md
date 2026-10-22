@@ -1,8 +1,8 @@
 # Outbound Sales — Metadata App Store Connect
 
 ## Estado da submissão — 21/10/2026
-- **Versão:** 1.0 · **build 8** (upload 21/10/2026 21:27, aguardando processamento; build 7 segue `VALID`).
-- **Review submission:** `468cdaf8-bae4-4b09-aa81-c650075613a8` — app + 5 IAPs, `READY_FOR_REVIEW` (build 7 anexada; falta anexar a build 8 e validar a conta demo).
+- **Versão:** 1.0 · **build 8** (`VALID`, anexada à versão em 21/10/2026).
+- **Review submission:** `468cdaf8-bae4-4b09-aa81-c650075613a8` — app + 5 IAPs, **enviada em 22/10/2026 00:46 UTC**, estado `WAITING_FOR_REVIEW`, com a build 8 anexada.
 - **IAPs:** os 5 consumíveis de Dood's estão `WAITING_FOR_REVIEW` junto da versão (preço, localização pt-BR, disponibilidade e screenshot de revisão configurados).
 - **Screenshot de revisão dos IAPs:** `asc/doods-review.png` (1290×2796).
 - **Screenshots do app:** `asc/out/6.7/09-proposta.png` e `10-doods.png` (e versões 6.5 em `asc/out/6.5/`).
@@ -11,7 +11,8 @@
 - **Custo da proposta:** `proposal_analyze` = 10 Doods (R$ 0,10). PDF no aparelho, sem custo extra.
 - **Segurança:** RLS + revogação de EXECUTE em `wallets`/`ledger`/`pricing`/`iap_*`/`usage_log`; Storage restrito à pasta do usuário (`profile_docs`/`lead_photos`). Testado: anon não lê carteira nem chama `credit_wallet`; welcome de 200 Doods continua funcionando.
 - **Screenshots:** 8 finais (`final-01..08`) já subidas nos conjuntos 6.7" e 6.5" da ASC.
-- **Pendências antes do envio:** a conta demo `review@outbound.dood.com.br` está retornando `Invalid login credentials` (testado em 21/10); redefinir a senha/confirmar o usuário antes de enviar. Renomear a API key `2W4XDLQ89D` para "Cristiano Braier" (ou enviar pela UI da ASC) e concluir o teste de compra sandbox.
+- **Conta demo:** `review@outbound.zonn.com.br` / `Outbound2026!` — login validado em 21/10. A versão com domínio `dood.com.br` não existe neste projeto Supabase.
+- **Pendências pós-envio:** concluir o teste de compra sandbox e acompanhar a review. A API key `2W4XDLQ89D` já autenticou e não bloqueia mais o envio.
 - **Pendências pós-aprovação:** testar compra de Dood's no sandbox e o webhook do RevenueCat; se os consumíveis não aparecerem, incluí-los na offering `default`; conferir App Privacy (rótulos) na UI da ASC (incluir Histórico de Compras e Conteúdo do Usuário); opcionalmente remover a assinatura antiga `outbound_pro_monthly` (não usada); centralizar a carteira no projeto Dood (hoje o Outbound tem Supabase/carteira próprios).
 
 ## Básico
@@ -81,10 +82,10 @@ Suporte: https://dood.com.br/suporte
 
 ## App Review Information
 - **Sign-in required:** Yes (há cadastro por e-mail/senha e conta demo abaixo).
-- **Conta demo:** `review@outbound.dood.com.br` / `Outbound2026!`
+- **Conta demo:** `review@outbound.zonn.com.br` / `Outbound2026!`
 - **Saldo da conta demo:** 127 Dood's (suficiente para testar todas as ações de IA).
 - **Notes:**
-  "Conta de demonstração: review@outbound.dood.com.br / Outbound2026!. O app permite cadastrar leads por foto (câmera), imagem, áudio ou manual, gerenciar um funil de 5 etapas, descobrir negócios por setor dentro do raio de atendimento e ver tudo no mapa. Em cada lead, 'Elaborar com IA' gera a mensagem. Dentro do lead, após as ações, informe o site e toque em 'Auditar site' para receber o diagnóstico. No mesmo bloco, cole uma conversa de WhatsApp (ou envie prints) e toque em 'Gerar proposta com IA': o app monta escopo, prazo e investimento, permite revisar e gera um PDF com a marca do Perfil. O app usa Dood's (créditos consumíveis): a conta demo já tem saldo; a recarga é feita por IAP consumível (1.000 a 50.000 Dood's). Não há assinatura. Exclusão de conta em Perfil → Excluir minha conta."
+  "Conta de demonstração: review@outbound.zonn.com.br / Outbound2026!. O app permite cadastrar leads por foto (câmera), imagem, áudio ou manual, gerenciar um funil de 5 etapas, descobrir negócios por setor dentro do raio de atendimento e ver tudo no mapa. Em cada lead, 'Elaborar com IA' gera a mensagem. Dentro do lead, após as ações, informe o site e toque em 'Auditar site' para receber o diagnóstico. No mesmo bloco, cole uma conversa de WhatsApp (ou envie prints) e toque em 'Gerar proposta com IA': o app monta escopo, prazo e investimento, permite revisar e gera um PDF com a marca do Perfil. O app usa Dood's (créditos consumíveis): a conta demo já tem saldo; a recarga é feita por IAP consumível (1.000 a 50.000 Dood's). Não há assinatura. Exclusão de conta em Perfil → Excluir minha conta."
 
 ## In-App Purchases (consumíveis)
 | Produto | Preço BR | Dood's |
